@@ -1,0 +1,19 @@
+{
+  "name": "bar-mitzvah-rsvp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.45.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "DB": {
+        "description": "מסד הנתונים של המוזמנים והתשובות. נוצר אוטומטית, אין צורך לשנות."
+      }
+    }
+  }
+}

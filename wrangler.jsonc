@@ -1,0 +1,10 @@
+{
+  "name": "bar-mitzvah-rsvp",
+  "main": "worker.js",
+  "compatibility_date": "2025-09-01",
+  "observability": { "enabled": true },
+  // No database_id: Wrangler 4.45+ and the Deploy to Cloudflare button create the database automatically.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "rsvp-db" }
+  ]
+}
