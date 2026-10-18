@@ -7,12 +7,1002 @@
  *   GET  /r/:code/event.ics   calendar file for the event
  *   GET  /admin               dashboard (password login, 30-day cookie)
  *   /api/*                    dashboard JSON API (admin cookie required)
+ *   POST /api/reset           wipe test answers back to the saved starting point (needs the reset code)
+ *
+ * The dashboard page can be replaced without a deploy by storing a full HTML page in D1
+ * (settings key 'adminhtml'). /admin?builtin=1 always serves the copy bundled here.
  *
  * Needs: a D1 binding named DB. Tables are created automatically on the first request.
  * The admin password is chosen on the first visit to /admin (or set as an ADMIN_PASSWORD secret).
  */
 
-const ADMIN_HTML = "<!doctype html>\n<html lang=\"he\" dir=\"rtl\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">\n<meta name=\"robots\" content=\"noindex,nofollow\">\n<meta name=\"theme-color\" content=\"#21509F\">\n<title>אישורי הגעה לבר המצווה</title>\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700;900&family=IBM+Plex+Sans+Hebrew:wght@400;500;600;700&family=Rubik:wght@700&family=Heebo:wght@800&family=Secular+One&family=Suez+One&display=swap\">\n<style>\n/* Layout: event band topped with tallit stripes, sticky tabs, single-column workspace up to 1100px */\n:root{\n  --bg:#F4F6FA; --surface:#FFFFFF; --sunken:#ECF0F6; --ink:#14203A; --muted:#5C6780; --line:#DCE2EC;\n  --tekhelet:#21509F; --tekhelet-hover:#1A4287; --on-tekhelet:#FFFFFF; --tekhelet-soft:#E3EBF8;\n  --yes:#1B7549; --yes-soft:#DFF1E6; --maybe:#8E5C08; --maybe-soft:#FAEED5; --no:#AE3A3C; --no-soft:#F7E3E2; --pending:#636D86; --pending-soft:#E9EDF3;\n  --bubble:#E2F2E4; --bubble-ink:#14203A;\n  --shadow:0 1px 2px rgba(20,32,58,.06),0 6px 18px rgba(20,32,58,.07);\n  --display:\"Frank Ruhl Libre\",\"David\",\"Times New Roman\",serif;\n  --sans:\"IBM Plex Sans Hebrew\",\"Arial Hebrew\",\"Segoe UI\",Arial,sans-serif;\n  --mono:ui-monospace,\"SF Mono\",Menlo,Consolas,monospace;\n  --r-sm:8px; --r-md:12px; --r-lg:18px;\n  color-scheme:light;\n}\n@media (prefers-color-scheme: dark){\n  :root{\n    --bg:#0D1320; --surface:#151D2E; --sunken:#1B2438; --ink:#E6EBF5; --muted:#98A3BC; --line:#29344C;\n    --tekhelet:#82A6EE; --tekhelet-hover:#9DBAF3; --on-tekhelet:#0D1320; --tekhelet-soft:#1B2A4A;\n    --yes:#6CCB98; --yes-soft:#15301F; --maybe:#E5B65C; --maybe-soft:#33270F; --no:#EE8A88; --no-soft:#3A1A1B; --pending:#A3ACC2; --pending-soft:#222B3F;\n    --bubble:#173322; --bubble-ink:#E6EBF5;\n    --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.28);\n    color-scheme:dark;\n  }\n}\n*{box-sizing:border-box}\nhtml{-webkit-text-size-adjust:100%}\nbody{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}\nh1,h2,h3,h4{margin:0;text-wrap:balance}\np{margin:0}\nbutton,input,select,textarea{font:inherit;color:inherit}\n[hidden]{display:none!important}\n:focus-visible{outline:2px solid var(--tekhelet);outline-offset:2px}\n.muted{color:var(--muted)}\n.wrap{max-width:1100px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}\n.tallit{height:20px;background:linear-gradient(to bottom,transparent 0 4px,var(--tekhelet) 4px 6px,transparent 6px 8px,var(--tekhelet) 8px 14px,transparent 14px 16px,var(--tekhelet) 16px 18px,transparent 18px)}\n\n.band{background:var(--surface);border-bottom:1px solid var(--line)}\n.band-inner{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 32px;padding-block:16px 22px}\n.band-text{min-width:0}\n.ev-title{font-family:var(--display);font-weight:700;font-size:clamp(28px,5vw,40px);line-height:1.15}\n.ev-meta{display:flex;flex-wrap:wrap;color:var(--muted);margin-top:6px}\n.ev-meta span+span::before{content:\"·\";margin-inline:.55em}\n.ev-meta .heb{font-family:var(--display);font-weight:500;color:var(--tekhelet)}\n.ev-meta button{border:0;background:none;color:var(--tekhelet);padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}\n.countdown{display:flex;align-items:baseline;gap:8px}\n.countdown .n{font-family:var(--display);font-weight:900;font-size:46px;line-height:1;color:var(--tekhelet);font-variant-numeric:tabular-nums}\n.countdown .l{color:var(--muted);font-size:14px}\n\n.tabs-bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}\n.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}\n.tab{border:0;background:none;padding:12px 14px;font-size:14.5px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}\n.tab:hover{color:var(--ink)}\n.tab[aria-selected=\"true\"]{color:var(--ink);border-bottom-color:var(--tekhelet)}\nmain.wrap{padding-block:20px 12px}\n\n.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r-sm);padding:8px 14px;font-weight:500;cursor:pointer;text-decoration:none;white-space:nowrap;line-height:1.3}\n.btn:hover{background:var(--sunken)}\n.btn.primary{background:var(--tekhelet);border-color:var(--tekhelet);color:var(--on-tekhelet)}\n.btn.primary:hover{background:var(--tekhelet-hover);border-color:var(--tekhelet-hover)}\n.btn.ghost{background:transparent;border-color:transparent}\n.btn.ghost:hover{background:var(--sunken)}\n.btn.sm{padding:5px 10px;font-size:13.5px}\n.btn.icon-only{padding:5px 7px}\n.btn.wa{color:var(--yes)}\n.btn.danger{color:var(--no)}\n.btn[disabled]{opacity:.45;cursor:not-allowed}\n.btn svg{width:16px;height:16px;flex:none}\n.inp{border:1px solid var(--line);background:var(--surface);border-radius:var(--r-sm);padding:7px 10px;min-width:0}\n.field{display:grid;gap:5px;min-width:0}\n.field label,.ed-label{font-size:12.5px;color:var(--muted);letter-spacing:.02em}\n.field .inp{width:100%}\n.hint{font-size:13px;color:var(--muted)}\n.sec-title{font-family:var(--display);font-weight:700;font-size:26px}\n.lede{color:var(--muted);max-width:60ch;margin-top:6px}\n\n.seg{display:inline-flex;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:3px;gap:3px}\n.seg button{border:0;background:transparent;border-radius:6px;padding:5px 11px;font-size:13.5px;cursor:pointer;color:var(--muted);display:inline-flex;gap:6px;align-items:center}\n.seg button:hover{color:var(--ink)}\n.seg button[aria-pressed=\"true\"]{background:var(--ink);color:var(--bg)}\n.seg button .c{opacity:.75;font-variant-numeric:tabular-nums}\n.seg .yes[aria-pressed=\"true\"]{background:var(--yes);color:var(--surface)}\n.seg .maybe[aria-pressed=\"true\"]{background:var(--maybe);color:var(--surface)}\n.seg .no[aria-pressed=\"true\"]{background:var(--no);color:var(--surface)}\n.seg .pending[aria-pressed=\"true\"]{background:var(--pending);color:var(--surface)}\n\n.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 10px;font-size:13px;font-weight:500;white-space:nowrap}\n.pill::before{content:\"\";width:6px;height:6px;border-radius:50%;background:currentColor}\n.pill.yes{background:var(--yes-soft);color:var(--yes)}\n.pill.maybe{background:var(--maybe-soft);color:var(--maybe)}\n.pill.no{background:var(--no-soft);color:var(--no)}\n.pill.pending{background:var(--pending-soft);color:var(--pending)}\n\n.share{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;background:var(--tekhelet-soft);border:1px solid var(--line);border-radius:var(--r-md);padding:14px 18px;margin-bottom:14px}\n.share-text{display:flex;flex-direction:column;gap:3px;min-width:0}\n.share-link{font-family:var(--mono);font-size:14.5px;color:var(--tekhelet);font-weight:600;overflow-wrap:anywhere}\n.stats{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:12px;margin-bottom:18px}\n.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:16px 18px;min-width:0}\n.headcount{border-color:var(--tekhelet-soft);box-shadow:inset 0 3px 0 var(--tekhelet)}\n.headcount .eyebrow{font-size:13px;color:var(--muted);font-weight:500}\n.headcount .big{font-family:var(--display);font-weight:900;font-size:58px;line-height:1.05;color:var(--tekhelet);font-variant-numeric:tabular-nums}\n.headcount .sub{font-size:13.5px;color:var(--muted)}\n.bd-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}\n.bd-head .pct{font-family:var(--display);font-weight:700;font-size:22px;font-variant-numeric:tabular-nums}\n.bar{display:flex;gap:2px;height:12px;border-radius:999px;overflow:hidden;background:var(--sunken);margin:12px 0 10px}\n.bar i{display:block;height:100%}\n.bar .yes{background:var(--yes)} .bar .maybe{background:var(--maybe)} .bar .no{background:var(--no)} .bar .pending{background:var(--pending);opacity:.45}\n.legend{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}\n.lg{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:8px 10px;border-radius:var(--r-sm);border:1px solid transparent;background:none;cursor:pointer;text-align:start}\n.lg:hover{background:var(--sunken)}\n.lg[aria-pressed=\"true\"]{border-color:var(--line);background:var(--sunken)}\n.lg .k{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}\n.lg .k::before{content:\"\";width:8px;height:8px;border-radius:50%}\n.lg.yes .k::before{background:var(--yes)} .lg.maybe .k::before{background:var(--maybe)} .lg.no .k::before{background:var(--no)} .lg.pending .k::before{background:var(--pending)}\n.lg .v{font-size:21px;font-weight:600;font-variant-numeric:tabular-nums}\n.lg .v small{font-size:12px;color:var(--muted);font-weight:400}\n\n.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}\n.chips{display:flex;flex-wrap:wrap;gap:6px}\n.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:13.5px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}\n.chip .c{color:var(--muted);font-variant-numeric:tabular-nums}\n.chip[aria-pressed=\"true\"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}\n.chip[aria-pressed=\"true\"] .c{color:inherit;opacity:.75}\n.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}\n.search{width:190px;max-width:100%}\n\n.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:18px;display:grid;gap:14px;min-width:0}\n.panel-title{font-size:17px;font-weight:600}\n.import{margin-bottom:12px}\n.import textarea{width:100%;resize:vertical;font-size:14px;line-height:1.6}\n.import-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}\n.check{display:inline-flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}\n\n.list-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden}\n.list{list-style:none;margin:0;padding:0}\n.list-head,.r-main{display:grid;grid-template-columns:minmax(0,2.3fr) minmax(0,1.1fr) minmax(0,.95fr) minmax(0,.7fr) minmax(0,1.7fr) 11.5rem;gap:12px;align-items:center;padding:10px 16px}\n.list-head{font-size:12px;color:var(--muted);letter-spacing:.03em;border-bottom:1px solid var(--line);background:var(--sunken);padding-block:8px}\n.row{border-bottom:1px solid var(--line)}\n.row:last-child{border-bottom:0}\n.row.open{background:var(--sunken)}\n.c-name{display:flex;flex-direction:column;min-width:0}\n.nm{font-weight:600;overflow-wrap:anywhere}\n.grp{font-size:12.5px;color:var(--muted)}\n.note{font-size:12.5px;color:var(--tekhelet)}\n.c-phone{font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}\n.c-people{font-variant-numeric:tabular-nums}\n.c-act{font-size:13px;color:var(--muted);min-width:0}\n.c-btns{display:flex;gap:4px;justify-content:flex-end}\n.row.open [data-act=\"toggle\"] svg{transform:rotate(180deg)}\n.empty{padding:32px 16px;color:var(--muted);text-align:center;display:grid;gap:12px;justify-items:center}\n.editor{display:flex;flex-wrap:wrap;gap:14px 22px;align-items:flex-end;padding:2px 16px 16px}\n.ed-block{display:flex;flex-direction:column;gap:6px;min-width:0}\n.ed-block.grow{flex:1 1 220px}\n.ed-block .inp{width:100%}\n.ed-fields input[dir=\"ltr\"]{text-align:right}\n.ed-fields{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr);gap:10px;flex-basis:100%}\n.ed-links{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;flex-basis:100%}\n.ed-links .spacer{flex:1}\n.link-text{font-size:12.5px;color:var(--muted);font-family:var(--mono);overflow-wrap:anywhere}\n.stepper{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface)}\n.stepper button{width:36px;height:36px;border:0;background:transparent;font-size:18px;cursor:pointer;border-radius:var(--r-sm)}\n.stepper button:hover{background:var(--sunken)}\n.stepper button[disabled]{opacity:.35;cursor:not-allowed}\n.stepper output{min-width:2.2em;text-align:center;font-weight:600;font-variant-numeric:tabular-nums}\n@keyframes flash{from{background:var(--tekhelet-soft)}to{background:transparent}}\n.row.flash{animation:flash 2.6s ease-out}\n\n@media (max-width:900px){\n  .list-head{display:none}\n  .r-main{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:\"name status\" \"phone people\" \"act btns\";gap:4px 12px;padding:12px 14px}\n  .c-name{grid-area:name} .c-status{grid-area:status;justify-self:end} .c-phone{grid-area:phone} .c-people{grid-area:people;justify-self:end;font-size:13.5px} .c-act{grid-area:act} .c-btns{grid-area:btns}\n  .c-people::before{content:\"אורחים: \";color:var(--muted)}\n  .editor{padding-inline:14px}\n  .ed-fields{grid-template-columns:1fr}\n}\n@media (max-width:720px){ .stats{grid-template-columns:1fr} }\n@media (max-width:560px){ .legend{grid-template-columns:repeat(2,minmax(0,1fr))} .tools{width:100%} .tools .search{flex:1 1 140px} }\n\n.round{display:grid;gap:18px;max-width:700px}\n.round-head{display:grid;gap:12px}\n.round-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;box-shadow:var(--shadow);display:grid;gap:14px;min-width:0}\n.rc-top{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}\n.progress{height:6px;background:var(--sunken);border-radius:999px;overflow:hidden}\n.progress i{display:block;height:100%;background:var(--tekhelet);transition:width .25s}\n.rc-guest .nm{font-family:var(--display);font-weight:700;font-size:26px}\n.rc-guest .meta{color:var(--muted);font-size:13.5px}\n.rc-actions{display:flex;flex-wrap:wrap;gap:8px}\n.rc-actions .sent.ready{border-color:var(--tekhelet);color:var(--tekhelet)}\n.rc-done,.rc-empty{display:grid;gap:10px;justify-items:start}\n.rc-done h3{font-family:var(--display);font-size:24px}\n.bubble{background:var(--bubble);color:var(--bubble-ink);border-radius:14px;border-start-start-radius:4px;padding:12px 14px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14.5px;line-height:1.6;max-width:48ch}\n.bubble .lnk{color:var(--tekhelet);text-decoration:underline;text-underline-offset:2px}\n\n.settings{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:16px;align-items:start}\n.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}\n#tplText{width:100%;resize:vertical;line-height:1.6;font-size:14.5px}\n.vars{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}\n.var{font-size:12.5px;border:1px dashed var(--line);background:transparent;border-radius:999px;padding:3px 10px;cursor:pointer;color:var(--tekhelet)}\n.var:hover{background:var(--tekhelet-soft)}\n.pv{display:grid;gap:6px}\n.headline-preview{max-width:346px;border:1px dashed var(--line);border-radius:var(--r-sm);padding:14px 16px;line-height:1.25;text-align:right;background:var(--bg);color:var(--ink);text-wrap:balance}\n.map-preview{display:block;max-width:100%;max-height:240px;border-radius:var(--r-sm);border:1px solid var(--line)}\n.save-state{font-size:13px;color:var(--muted);min-height:1.4em}\n.save-state.err{color:var(--no)}\n@media (max-width:860px){ .settings{grid-template-columns:1fr} }\n@media (max-width:420px){ .field-row{grid-template-columns:1fr} }\n\n.foot{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;color:var(--muted);font-size:12.5px;padding-block:22px 36px}\n.foot form{margin:0}\n\n.toast{position:fixed;left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));margin-inline:auto;width:fit-content;bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);border-radius:14px;padding-block:10px;padding-inline:16px 10px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;box-shadow:var(--shadow);z-index:20;font-size:14px}\n.toast span{overflow-wrap:anywhere}\n.toast button,.toast a{background:transparent;border:1px solid currentColor;color:inherit;border-radius:999px;padding:3px 12px;cursor:pointer;white-space:nowrap;text-decoration:none;font-size:14px}\n@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}\n</style>\n</head>\n<body>\n<header class=\"band\">\n  <div class=\"tallit\" aria-hidden=\"true\"></div>\n  <div class=\"wrap band-inner\">\n    <div class=\"band-text\">\n      <h1 class=\"ev-title\" id=\"evTitle\">בר המצווה</h1>\n      <p class=\"ev-meta\" id=\"evMeta\"></p>\n    </div>\n    <div class=\"countdown\" id=\"countdown\"></div>\n  </div>\n</header>\n\n<div class=\"tabs-bar\">\n  <div class=\"wrap\">\n    <div class=\"tabs\" role=\"tablist\" aria-label=\"אזורים\">\n      <button class=\"tab\" role=\"tab\" id=\"t-board\" data-tab=\"board\" aria-controls=\"p-board\" aria-selected=\"true\">לוח בקרה</button>\n      <button class=\"tab\" role=\"tab\" id=\"t-round\" data-tab=\"round\" aria-controls=\"p-round\" aria-selected=\"false\">סבב תזכורות</button>\n      <button class=\"tab\" role=\"tab\" id=\"t-settings\" data-tab=\"settings\" aria-controls=\"p-settings\" aria-selected=\"false\">פרטי האירוע ונוסחים</button>\n    </div>\n  </div>\n</div>\n\n<main class=\"wrap\">\n  <section id=\"p-board\" role=\"tabpanel\" aria-labelledby=\"t-board\">\n    <div class=\"share\">\n      <div class=\"share-text\">\n        <span class=\"ed-label\">הלינק לכל האורחים</span>\n        <span class=\"share-link\" id=\"genLink\" dir=\"ltr\"></span>\n        <span class=\"hint\">כל מי שפותח אותו כותב שם וטלפון ועונה. התשובה מופיעה כאן.</span>\n      </div>\n      <div class=\"tools\">\n        <button class=\"btn sm\" id=\"copyGenLink\" type=\"button\">העתקת הלינק</button>\n        <button class=\"btn sm\" id=\"copyGenMsg\" type=\"button\">העתקת ההודעה</button>\n        <a class=\"btn sm primary\" id=\"waGen\" target=\"_blank\" rel=\"noopener\">שליחה בוואטסאפ</a>\n      </div>\n    </div>\n    <div class=\"stats\" id=\"stats\"></div>\n    <div class=\"toolbar\">\n      <div class=\"chips\" id=\"chips\" role=\"group\" aria-label=\"סינון לפי סטטוס\"></div>\n      <div class=\"tools\">\n        <input id=\"search\" class=\"inp search\" type=\"search\" placeholder=\"חיפוש שם או טלפון\" aria-label=\"חיפוש שם או טלפון\">\n        <select id=\"groupSel\" class=\"inp\" aria-label=\"סינון לפי קבוצה\"></select>\n        <button id=\"importToggle\" class=\"btn\" aria-expanded=\"false\" aria-controls=\"importPanel\">ייבוא רשימה</button>\n        <a class=\"btn\" href=\"/api/export.csv\">ייצוא לאקסל</a>\n      </div>\n    </div>\n    <div id=\"importPanel\" class=\"panel import\" hidden>\n      <div class=\"field\">\n        <label for=\"importText\">שורה לכל הזמנה: שם, טלפון, קבוצה, מספר מוזמנים</label>\n        <textarea id=\"importText\" class=\"inp\" rows=\"6\" placeholder=\"משפחת כהן, 050-1234567, משפחה, 4&#10;דנה ויואב לוי, 052-7654321, חברים, 2\"></textarea>\n      </div>\n      <p class=\"hint\">אפשר להדביק ישר עמודות מאקסל או מגוגל שיטס. רק השם חובה. שורות עם טלפון שכבר קיים ברשימה ידולגו.</p>\n      <div class=\"import-actions\">\n        <label class=\"check\"><input type=\"checkbox\" id=\"importReplace\"> למחוק קודם את כל הרשימה הקיימת</label>\n        <div class=\"tools\"><button id=\"quickTestBtn\" class=\"btn ghost\" type=\"button\">בדיקה מהירה</button><button id=\"importGo\" class=\"btn primary\">הוספה לרשימה</button></div>\n      </div>\n    </div>\n    <div class=\"list-card\">\n      <div class=\"list-head\" aria-hidden=\"true\"><span>מוזמנים</span><span>טלפון</span><span>סטטוס</span><span>אורחים</span><span>פעילות אחרונה</span><span></span></div>\n      <ul class=\"list\" id=\"list\"><li class=\"empty\">טוען את הרשימה…</li></ul>\n    </div>\n  </section>\n\n  <section id=\"p-round\" role=\"tabpanel\" aria-labelledby=\"t-round\" hidden>\n    <div class=\"round\">\n      <div class=\"round-head\">\n        <div>\n          <h2 class=\"sec-title\">סבב תזכורות</h2>\n          <p class=\"lede\">כל לחיצה פותחת את הוואטסאפ שלך עם הודעה אישית מוכנה, כולל הלינק של אותו מוזמן. שולחים, חוזרים לכאן ועוברים לבא בתור.</p>\n        </div>\n        <div class=\"seg\" id=\"audSeg\" role=\"group\" aria-label=\"למי לשלוח\"></div>\n        <p class=\"hint\" id=\"audHint\"></p>\n      </div>\n      <div class=\"round-card\" id=\"roundCard\"></div>\n    </div>\n  </section>\n\n  <section id=\"p-settings\" role=\"tabpanel\" aria-labelledby=\"t-settings\" hidden>\n    <div class=\"settings\">\n      <div class=\"panel\">\n        <h2 class=\"panel-title\">פרטי האירוע</h2>\n        <div class=\"field\"><label for=\"evBoy\">שם חתן בר המצווה</label><input id=\"evBoy\" class=\"inp\"></div>\n        <div class=\"field-row\">\n          <div class=\"field\"><label for=\"evDate\">תאריך</label><input id=\"evDate\" type=\"date\" class=\"inp\"></div>\n          <div class=\"field\"><label for=\"evTime\">שעת קבלת פנים</label><input id=\"evTime\" type=\"time\" class=\"inp\"></div>\n        </div>\n        <div class=\"field\"><label for=\"evHeadline\">כותרת בדף האורחים</label><input id=\"evHeadline\" class=\"inp\"><span class=\"hint\">{חתן} מתחלף בשם. כל הכותרת באותו גודל.</span></div>\n        <div class=\"field\"><label for=\"evFont\">גופן הכותרת</label>\n          <select id=\"evFont\" class=\"inp\">\n            <option value=\"rubik\">Rubik: מודרני ונקי</option>\n            <option value=\"heebo\">Heebo: חזק ובולט</option>\n            <option value=\"secular\">Secular One: עגול וחגיגי</option>\n            <option value=\"suez\">Suez One: קלאסי, עם סריפים</option>\n            <option value=\"frank\">Frank Ruhl Libre: ספרותי</option>\n          </select>\n        </div>\n        <div class=\"field\"><span class=\"ed-label\">כך תיראה הכותרת בטלפון</span><div class=\"headline-preview\" id=\"headlinePreview\"></div></div>\n        <div class=\"field\"><label for=\"evVenue\">מקום</label><input id=\"evVenue\" class=\"inp\" placeholder=\"שם האולם\"></div>\n        <div class=\"field\"><label for=\"evAddr\">כתובת (לקישור הניווט)</label><input id=\"evAddr\" class=\"inp\" placeholder=\"רחוב, מספר, עיר\"></div>\n        <div class=\"field\">\n          <span class=\"ed-label\">מפת הגעה</span>\n          <img id=\"mapPreview\" class=\"map-preview\" alt=\"מפת ההגעה שהועלתה\" hidden>\n          <div class=\"tools\">\n            <label class=\"btn sm\" for=\"mapFile\" id=\"mapPick\">העלאת תמונה</label>\n            <input id=\"mapFile\" type=\"file\" accept=\"image/*\" hidden>\n            <button class=\"btn sm ghost danger\" id=\"mapRemove\" type=\"button\" hidden>הסרה</button>\n          </div>\n          <p class=\"hint\">התמונה תופיע בדף שהאורחים פותחים, וגם כתמונה בהודעה בוואטסאפ.</p>\n        </div>\n        <div class=\"field-row\">\n          <div class=\"field\"><label for=\"evSender\">חתימה בהודעות</label><input id=\"evSender\" class=\"inp\" placeholder=\"למשל: אלי והמשפחה\"></div>\n          <div class=\"field\"><label for=\"evRsvpBy\">לבקש תשובה עד</label><input id=\"evRsvpBy\" type=\"date\" class=\"inp\"></div>\n        </div>\n        <p class=\"hint\" id=\"hebHint\"></p>\n        <p class=\"save-state\" id=\"saveState\" role=\"status\" aria-live=\"polite\"></p>\n      </div>\n      <div class=\"panel\">\n        <h2 class=\"panel-title\">נוסחי ההודעות</h2>\n        <div class=\"seg\" id=\"tplSeg\" role=\"group\" aria-label=\"איזה נוסח\">\n          <button data-tpl=\"general\" aria-pressed=\"false\">הלינק הכללי</button>\n          <button data-tpl=\"request\" aria-pressed=\"true\">בקשה אישית</button>\n          <button data-tpl=\"reminder\" aria-pressed=\"false\">תזכורת לאירוע</button>\n        </div>\n        <p class=\"hint\" id=\"tplHint\"></p>\n        <textarea id=\"tplText\" class=\"inp\" rows=\"10\" aria-label=\"נוסח ההודעה\"></textarea>\n        <div>\n          <span class=\"ed-label\">שדות שמתמלאים לבד, לחיצה מוסיפה אותם לנוסח</span>\n          <div class=\"vars\" id=\"vars\"></div>\n        </div>\n        <div><button class=\"btn sm ghost\" id=\"tplReset\">חזרה לנוסח המקורי</button></div>\n        <div class=\"pv\"><span class=\"ed-label\" id=\"pvLabel\"></span><div class=\"bubble\" id=\"tplPreview\"></div></div>\n      </div>\n    </div>\n  </section>\n\n  <div class=\"foot\">\n    <span id=\"syncNote\">הרשימה מתעדכנת לבד כל חצי דקה.</span>\n    <form method=\"post\" action=\"/admin/logout\"><button class=\"btn sm ghost\" type=\"submit\">יציאה</button></form>\n  </div>\n</main>\n\n<div class=\"toast\" id=\"toast\" role=\"status\" aria-live=\"polite\" hidden></div>\n\n<script>\n(function(){\n'use strict';\nconst $=(s,el)=>(el||document).querySelector(s);\nconst esc=s=>String(s==null?'':s).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]));\nconst DAY=86400000;\nconst reduceMotion=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;\nconst ICON={\n  chat:'<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 11.5a8.4 8.4 0 0 1-12.3 7.5L3 21l2-5.5A8.4 8.4 0 1 1 21 11.5z\"/></svg>',\n  chev:'<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m6 9 6 6 6-6\"/></svg>',\n  copy:'<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"9\" y=\"9\" width=\"12\" height=\"12\" rx=\"2\"/><path d=\"M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1\"/></svg>',\n  ext:'<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M14 4h6v6\"/><path d=\"M20 4 10 14\"/><path d=\"M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5\"/></svg>'\n};\nconst ST={yes:{label:'מגיעים'},maybe:{label:'אולי'},no:{label:'לא מגיעים'},pending:{label:'טרם ענו'}};\nconst VARS=['שם','חתן','יום','תאריך','תאריך עברי','שעה','מקום','כתובת','לינק','ניווט','שולח'];\nconst FONT_OPTS={rubik:['Rubik',700,30],heebo:['Heebo',800,31],secular:['Secular One',400,31],suez:['Suez One',400,30],frank:['Frank Ruhl Libre',900,32]};\nconst DEFAULT_HEADLINE='הנה זה מגיע! מזכירים לכם את חגיגת בר המצווה של {חתן}';\nfunction renderHeadlinePreview(){\n  const el=$('#headlinePreview');if(!el)return;\n  const f=FONT_OPTS[state.event.font]||FONT_OPTS.rubik;\n  el.style.fontFamily=\"'\"+f[0]+\"', 'Arial Hebrew', Arial, sans-serif\";el.style.fontWeight=String(f[1]);el.style.fontSize=f[2]+'px';\n  const h=state.event.headline||DEFAULT_HEADLINE;\n  el.textContent=state.event.boy?h.replace(/\\{חתן\\}/g,state.event.boy):h.replace(/\\s*של\\s*\\{חתן\\}/g,'').replace(/\\{חתן\\}/g,'');\n}\nconst EV_FIELDS={evFont:'font',evBoy:'boy',evHeadline:'headline',evDate:'date',evTime:'time',evVenue:'venue',evAddr:'address',evSender:'sender',evRsvpBy:'rsvpBy'};\n\nconst state={\n  event:{},tpl:{request:'',reminder:''},defaults:{request:'',reminder:''},base:location.origin,guests:[],loaded:false,loadError:false,\n  filter:'all',group:'all',q:'',expanded:null,tab:'board',\n  round:{aud:'pending',queue:null,idx:0,sent:0,skipped:0},\n  tplKey:'general'\n};\nconst byId=id=>state.guests.find(g=>g.id===id);\nconst byName=(a,b)=>a.name.localeCompare(b.name,'he');\n\n/* ---------- server ---------- */\nasync function api(method,path,body){\n  const res=await fetch(path,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,credentials:'same-origin'});\n  if(res.status===401){location.reload();throw new Error('unauthorized');}\n  if(!res.ok)throw new Error('HTTP '+res.status);\n  return res.json();\n}\nlet chain=Promise.resolve();\nfunction enqueue(fn){chain=chain.then(fn,fn);return chain;}\nfunction normalize(g){return Object.assign({},g,{answeredAt:g.answeredAt?new Date(g.answeredAt):null,lastReminder:g.lastReminder?new Date(g.lastReminder):null});}\nfunction saveFailed(e){if(!e||e.message!=='unauthorized')toast('לא הצלחתי לשמור. בדוק את החיבור ונסה שוב.');}\n\nfunction applyGuests(list){\n  state.guests=list.map(normalize);\n  state.loaded=true;state.loadError=false;\n  if(state.round.queue)state.round.queue=state.round.queue.filter(id=>byId(id));\n  buildGroupSelect();\n}\nasync function loadAll(){\n  try{\n    const s=await api('GET','/api/state');\n    state.event=s.event;state.tpl=s.tpl;state.defaults=s.defaults;state.base=s.base||location.origin;state.map=s.map||null;renderMap();\n    applyGuests(s.guests);\n    fillSettings();loadTpl();\n    if(!state.guests.length)openImport();\n  }catch(e){state.loadError=true;}\n  renderAll();\n}\nfunction editingInList(){const a=document.activeElement;return a&&(a.closest('#list')||a.closest('#importPanel'))&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA');}\nasync function refresh(){\n  if(!state.loaded||editingInList())return;\n  try{const s=await api('GET','/api/state');applyGuests(s.guests);renderBoard();renderRound();renderPreview();}catch(e){}\n}\nsetInterval(()=>{if(document.visibilityState==='visible')refresh();},30000);\ndocument.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refresh();});\n\n/* ---------- dates and links ---------- */\nfunction today0(){const n=new Date();return new Date(n.getFullYear(),n.getMonth(),n.getDate());}\nfunction dayOf(s){const p=String(s||'').split('-').map(Number);if(p.length!==3||!p[0]||!p[1]||!p[2])return null;return new Date(p[0],p[1]-1,p[2]);}\nconst evDate=()=>dayOf(state.event.date);\nfunction fmt(d,opts,loc){try{return new Intl.DateTimeFormat(loc||'he-IL',opts).format(d);}catch(e){return d.toLocaleDateString();}}\nconst weekday=d=>fmt(d,{weekday:'long'});\nconst dateLong=d=>fmt(d,{day:'numeric',month:'long',year:'numeric'});\nconst dateShort=d=>fmt(d,{day:'numeric',month:'long'});\nfunction gematria(n){const o=['','א','ב','ג','ד','ה','ו','ז','ח','ט'],t=['','י','כ','ל','מ','נ','ס','ע','פ','צ'],h=['','ק','ר','ש','ת','תק','תר','תש','תת','תתק'];const r=n%100;const s=h[Math.floor(n/100)]+(r===15?'טו':r===16?'טז':t[Math.floor(r/10)]+o[r%10]);return s.length===1?s+'׳':s.slice(0,-1)+'״'+s.slice(-1);}\nfunction hebDate(d){try{const p=new Intl.DateTimeFormat('he-IL-u-ca-hebrew',{day:'numeric',month:'long',year:'numeric'}).formatToParts(d);const get=x=>(p.find(q=>q.type===x)||{}).value;const day=parseInt(get('day'),10),year=parseInt(get('year'),10),month=get('month');return day&&year&&month?gematria(day)+' ב'+month+' '+gematria(year%1000):'';}catch(e){return '';}}\nconst rtf=(()=>{try{return new Intl.RelativeTimeFormat('he',{numeric:'auto'});}catch(e){return null;}})();\nfunction ago(d){if(!d)return '';const days=Math.round((today0()-new Date(d.getFullYear(),d.getMonth(),d.getDate()))/DAY);return rtf?rtf.format(-days,'day'):'לפני '+days+' ימים';}\nfunction personalLink(g){return state.base+'/r/'+g.code;}\nfunction generalLink(){return state.base+'/';}\nfunction wazeLink(){return state.base+'/waze';}\nfunction intlPhone(p){let d=String(p||'').replace(/\\D/g,'');if(d.startsWith('00'))d=d.slice(2);if(d.startsWith('0'))d='972'+d.slice(1);return d.length>=11&&d.length<=13?d:'';}\nfunction vars(g){\n  const d=evDate();\n  return {'שם':g?g.name:'','חתן':state.event.boy||'','יום':d?weekday(d):'','תאריך':d?dateShort(d):'','תאריך עברי':d?hebDate(d):'','שעה':state.event.time||'','מקום':state.event.venue||'','כתובת':state.event.address||'','לינק':g&&g.code?personalLink(g):generalLink(),'ניווט':wazeLink(),'שולח':state.event.sender||''};\n}\nfunction fill(t,g){const v=vars(g);return String(t||'').replace(/\\{([^{}]+)\\}/g,(m,k)=>Object.prototype.hasOwnProperty.call(v,k)?v[k]:m);}\nfunction tplFor(g){return g.status==='yes'?'reminder':g.status==='no'?null:'request';}\nfunction waLink(g,key){return 'https://wa.me/'+intlPhone(g.phone)+'?text='+encodeURIComponent(fill(state.tpl[key],g));}\nfunction linkify(escaped){return escaped.replace(/https?:\\/\\/[^\\s<]+/g,m=>'<span class=\"lnk\" dir=\"ltr\">'+m+'</span>');}\nconst pill=s=>'<span class=\"pill '+s+'\">'+ST[s].label+'</span>';\nfunction stats(){\n  const s={total:0,yes:0,no:0,maybe:0,pending:0,yesP:0,maybeP:0,invitedP:0};\n  for(const g of state.guests){s.total++;s[g.status]++;s.invitedP+=g.invited;if(g.status==='yes')s.yesP+=g.count;if(g.status==='maybe')s.maybeP+=g.count;}\n  return s;\n}\n\n/* ---------- header ---------- */\nfunction renderHeader(){\n  renderHeadlinePreview();\n  const e=state.event,d=evDate();\n  $('#evTitle').textContent=e.boy?'בר המצווה של '+e.boy:'בר המצווה';\n  const parts=[];\n  if(d){parts.push('<span>'+esc(weekday(d)+', '+dateLong(d))+'</span>');const h=hebDate(d);if(h)parts.push('<span class=\"heb\">'+esc(h)+'</span>');}\n  if(e.time&&d)parts.push('<span>'+esc(e.time)+'</span>');\n  if(e.venue)parts.push('<span>'+esc(e.venue)+'</span>');\n  if(state.loaded&&(!e.boy||!d))parts.push('<span><button type=\"button\" data-goto=\"settings\">להשלמת פרטי האירוע</button></span>');\n  $('#evMeta').innerHTML=parts.join('');\n  const cd=$('#countdown');\n  if(!d){cd.innerHTML='';}\n  else{const n=Math.round((d-today0())/DAY);cd.innerHTML=n>1?'<span class=\"n\">'+n+'</span><span class=\"l\">ימים לאירוע</span>':n===1?'<span class=\"n\">מחר</span>':n===0?'<span class=\"n\">היום</span>':'<span class=\"l\">האירוע עבר</span>';}\n  $('#hebHint').textContent=d&&hebDate(d)?'התאריך העברי: '+hebDate(d):'';\n}\n$('#evMeta').addEventListener('click',e=>{if(e.target.closest('[data-goto]'))setTab('settings');});\n\n/* ---------- board ---------- */\nfunction renderStats(){\n  const s=stats(),answered=s.total-s.pending,pct=s.total?Math.round(answered/s.total*100):0;\n  const seg=k=>s[k]?'<i class=\"'+k+'\" style=\"flex:'+s[k]+' 1 0\"></i>':'';\n  const lg=k=>'<button class=\"lg '+k+'\" data-filter=\"'+k+'\" aria-pressed=\"'+(state.filter===k)+'\"><span class=\"k\">'+ST[k].label+'</span><span class=\"v\">'+s[k]+(k==='yes'?' <small>הזמנות · '+s.yesP+' אורחים</small>':k==='maybe'?' <small>הזמנות · '+s.maybeP+' אורחים</small>':'')+'</span></button>';\n  $('#stats').innerHTML=\n    '<div class=\"tile headcount\"><div class=\"eyebrow\">אורחים שאישרו הגעה</div><div class=\"big\">'+s.yesP+'</div>'+\n    '<div class=\"sub\">ב־'+s.yes+' הזמנות, מתוך כ־'+s.invitedP+' אורחים שהוזמנו'+(s.maybeP?'<br>עוד '+s.maybeP+' אורחים סימנו אולי':'')+'</div></div>'+\n    '<div class=\"tile breakdown\"><div class=\"bd-head\"><span>ענו <b>'+answered+'</b> מתוך '+s.total+' הזמנות</span><span class=\"pct\">'+pct+'%</span></div>'+\n    '<div class=\"bar\" role=\"img\" aria-label=\"'+s.yes+' מגיעים, '+s.maybe+' אולי, '+s.no+' לא מגיעים, '+s.pending+' טרם ענו\">'+seg('yes')+seg('maybe')+seg('no')+seg('pending')+'</div>'+\n    '<div class=\"legend\">'+lg('yes')+lg('maybe')+lg('no')+lg('pending')+'</div></div>';\n}\nfunction renderChips(){\n  const s=stats();\n  const F=[['all','הכל',s.total],['pending','טרם ענו',s.pending],['yes','מגיעים',s.yes],['maybe','אולי',s.maybe],['no','לא מגיעים',s.no]];\n  $('#chips').innerHTML=F.map(([k,l,c])=>'<button class=\"chip\" data-filter=\"'+k+'\" aria-pressed=\"'+(state.filter===k)+'\">'+l+'<span class=\"c\">'+c+'</span></button>').join('');\n}\nfunction buildGroupSelect(){\n  const groups=[...new Set(state.guests.map(g=>g.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'he'));\n  if(state.group!=='all'&&!groups.includes(state.group))state.group='all';\n  const sel=$('#groupSel');if(document.activeElement===sel)return;\n  sel.innerHTML='<option value=\"all\">כל הקבוצות</option>'+groups.map(g=>'<option value=\"'+esc(g)+'\">'+esc(g)+'</option>').join('');\n  sel.value=state.group;sel.hidden=!groups.length;\n}\nfunction filtered(){\n  const q=state.q.trim(),qd=q.replace(/\\D/g,'');\n  return state.guests.filter(g=>(state.filter==='all'||g.status===state.filter)&&(state.group==='all'||g.group===state.group)&&(!q||g.name.includes(q)||(qd&&g.phone.replace(/\\D/g,'').includes(qd)))).sort(byName);\n}\nfunction activity(g){\n  if(g.status!=='pending')return (g.source==='link'?'ענו דרך הלינק':'סומן ידנית')+' · '+ago(g.answeredAt);\n  if(g.reminders)return (g.reminders===1?'נשלחה תזכורת':'נשלחו '+g.reminders+' תזכורות')+' · '+ago(g.lastReminder);\n  return 'עוד לא נשלחה תזכורת';\n}\nfunction stepper(n,disabled){\n  return '<div class=\"stepper\"><button data-act=\"inc\" aria-label=\"להוסיף\"'+(disabled?' disabled':'')+'>+</button><output>'+n+'</output><button data-act=\"dec\" aria-label=\"להוריד\"'+(disabled||n<=1?' disabled':'')+'>−</button></div>';\n}\nfunction rMainHTML(g){\n  const open=state.expanded===g.id,key=tplFor(g);\n  const people=g.status==='yes'?'<b>'+g.count+'</b>':g.status==='maybe'?'<span dir=\"ltr\">'+g.count+'?</span>':g.status==='no'?'—':'<span class=\"muted\">הוזמנו '+g.invited+'</span>';\n  const wa=key&&g.phone?'<a class=\"btn sm wa\" href=\"'+esc(waLink(g,key))+'\" target=\"_blank\" rel=\"noopener\" title=\"'+(key==='request'?'שליחת בקשת אישור הגעה בוואטסאפ':'שליחת תזכורת לאירוע בוואטסאפ')+'\">'+ICON.chat+'<span>'+(key==='request'?'בקשת אישור':'תזכורת')+'</span></a>':'';\n  return '<div class=\"c-name\"><span class=\"nm\">'+esc(g.name)+'</span>'+(g.group?'<span class=\"grp\">'+esc(g.group)+'</span>':'')+(g.note?'<span class=\"note\">'+esc(g.note)+'</span>':'')+'</div>'+\n    '<div class=\"c-phone\" dir=\"ltr\">'+esc(g.phone||'—')+'</div>'+\n    '<div class=\"c-status\">'+pill(g.status)+'</div>'+\n    '<div class=\"c-people\">'+people+'</div>'+\n    '<div class=\"c-act\">'+esc(activity(g))+'</div>'+\n    '<div class=\"c-btns\">'+wa+'<button class=\"btn sm ghost icon-only\" data-act=\"toggle\" aria-expanded=\"'+open+'\" aria-label=\"עריכת '+esc(g.name)+'\">'+ICON.chev+'</button></div>';\n}\nfunction editorHTML(g){\n  const editsInvited=g.status==='pending';\n  const n=editsInvited?g.invited:g.status==='no'?0:g.count;\n  const f=(field,label,val,dir)=>'<div class=\"field\"><label for=\"f-'+field+'-'+g.id+'\">'+label+'</label><input id=\"f-'+field+'-'+g.id+'\" class=\"inp\" data-field=\"'+field+'\" value=\"'+esc(val)+'\"'+(dir?' dir=\"'+dir+'\"':'')+'></div>';\n  return '<div class=\"editor\">'+\n    '<div class=\"ed-block\"><span class=\"ed-label\">סטטוס</span><div class=\"seg\" role=\"group\" aria-label=\"סטטוס\">'+\n      ['yes','maybe','no','pending'].map(s=>'<button class=\"'+s+'\" data-act=\"set-status\" data-s=\"'+s+'\" aria-pressed=\"'+(g.status===s)+'\">'+ST[s].label+'</button>').join('')+'</div></div>'+\n    '<div class=\"ed-block\"><span class=\"ed-label\">'+(editsInvited?'מספר מוזמנים':'מספר מגיעים')+'</span>'+stepper(n,g.status==='no')+'</div>'+\n    '<div class=\"ed-block grow\"><label class=\"ed-label\" for=\"f-note-'+g.id+'\">הערה (המוזמן רואה אותה)</label><input id=\"f-note-'+g.id+'\" class=\"inp\" data-field=\"note\" value=\"'+esc(g.note)+'\" placeholder=\"למשל: אחד מהם צמחוני\"></div>'+\n    '<div class=\"ed-fields\">'+f('name','שם בהזמנה',g.name)+f('phone','טלפון',g.phone,'ltr')+f('group','קבוצה',g.group)+'</div>'+\n    '<div class=\"ed-links\"><a class=\"btn sm ghost\" href=\"'+esc(personalLink(g))+'\" target=\"_blank\" rel=\"noopener\">'+ICON.ext+'הדף של המוזמן</a>'+\n    '<button class=\"btn sm ghost\" data-act=\"copy\">'+ICON.copy+'העתקת הלינק</button><span class=\"link-text\" dir=\"ltr\">'+esc(personalLink(g))+'</span>'+\n    '<span class=\"spacer\"></span><button class=\"btn sm ghost danger\" data-act=\"delete\">מחיקה</button></div>'+\n    '</div>';\n}\nfunction rowHTML(g){return '<li class=\"row'+(state.expanded===g.id?' open':'')+'\" data-id=\"'+g.id+'\"><div class=\"r-main\">'+rMainHTML(g)+'</div>'+(state.expanded===g.id?editorHTML(g):'')+'</li>';}\nfunction renderList(){\n  const el=$('#list');\n  if(state.loadError){el.innerHTML='<li class=\"empty\"><p>לא הצלחתי לטעון את הרשימה.</p><button class=\"btn\" data-act=\"retry\">לנסות שוב</button></li>';return;}\n  if(!state.loaded){el.innerHTML='<li class=\"empty\">טוען את הרשימה…</li>';return;}\n  if(!state.guests.length){el.innerHTML='<li class=\"empty\"><p>עוד אין תשובות. שלח לאורחים את הלינק שלמעלה, וכל מי שעונה יופיע כאן.<br>יש לך רשימת מוזמנים? אפשר גם לייבא אותה, וכל מוזמן יקבל לינק אישי.</p><div class=\"tools\"><button class=\"btn\" data-act=\"open-import\">ייבוא רשימה</button><button class=\"btn\" data-act=\"quick-test\">בדיקה מהירה</button></div></li>';return;}\n  const rows=filtered();\n  el.innerHTML=rows.length?rows.map(rowHTML).join(''):'<li class=\"empty\">אין מוזמנים שמתאימים לסינון הזה.</li>';\n}\nfunction renderBoard(){renderStats();renderChips();renderList();}\nfunction updateRow(g){const li=document.querySelector('.row[data-id=\"'+g.id+'\"]');if(li)li.querySelector('.r-main').innerHTML=rMainHTML(g);renderStats();renderChips();}\n\n/* ---------- reminder round ---------- */\nfunction buildQueue(){\n  const R=state.round;\n  R.queue=state.guests.filter(g=>g.status===R.aud&&g.phone).sort(byName).map(g=>g.id);\n  R.idx=0;R.sent=0;R.skipped=0;\n}\nfunction renderRound(){\n  const R=state.round;if(!state.loaded)return;if(!R.queue)buildQueue();\n  const s=stats();\n  const AUD=[['pending','טרם ענו'],['maybe','ענו אולי'],['yes','אישרו הגעה']];\n  $('#audSeg').innerHTML=AUD.map(([k,l])=>'<button data-aud=\"'+k+'\" aria-pressed=\"'+(R.aud===k)+'\">'+l+' <span class=\"c\">'+s[k]+'</span></button>').join('');\n  const key=R.aud==='yes'?'reminder':'request';\n  $('#audHint').textContent=key==='reminder'?'נוסח: תזכורת לאירוע, עם קישור לניווט. מתאים לשלוח יום או יומיים לפני.':'נוסח: בקשת אישור הגעה עם הלינק האישי של כל מוזמן.';\n  const card=$('#roundCard'),q=R.queue;\n  if(!q.length){card.innerHTML='<div class=\"rc-empty\"><p>אין כרגע מוזמנים עם מספר טלפון בקבוצה הזו.</p></div>';return;}\n  if(R.idx>=q.length){card.innerHTML='<div class=\"rc-done\"><h3>הסבב הסתיים</h3><p>סימנת '+R.sent+' הודעות כנשלחו'+(R.skipped?', ודילגת על '+R.skipped:'')+'.</p><button class=\"btn primary\" data-r=\"restart\">סבב חדש</button></div>';return;}\n  const g=byId(q[R.idx]);if(!g){R.idx++;renderRound();return;}\n  const pct=Math.round(R.idx/q.length*100);\n  card.innerHTML=\n    '<div class=\"rc-top\"><span>הודעה '+(R.idx+1)+' מתוך '+q.length+'</span><span>נשלחו '+R.sent+(R.skipped?' · דילגת על '+R.skipped:'')+'</span></div>'+\n    '<div class=\"progress\"><i style=\"width:'+pct+'%\"></i></div>'+\n    '<div class=\"rc-guest\"><div class=\"nm\">'+esc(g.name)+'</div><div class=\"meta\"><span dir=\"ltr\">'+esc(g.phone)+'</span>'+(g.group?' · '+esc(g.group):'')+(g.reminders?' · כבר קיבלו '+g.reminders+' תזכורות':'')+'</div></div>'+\n    '<div class=\"bubble\">'+linkify(esc(fill(state.tpl[key],g)))+'</div>'+\n    '<div class=\"rc-actions\"><a class=\"btn primary\" data-r=\"open\" href=\"'+esc(waLink(g,key))+'\" target=\"_blank\" rel=\"noopener\">'+ICON.chat+'פתיחה בוואטסאפ</a>'+\n    '<button class=\"btn sent\" data-r=\"sent\">נשלח, לבא בתור</button><button class=\"btn ghost\" data-r=\"skip\">דילוג</button></div>'+\n    (intlPhone(g.phone)?'':'<p class=\"hint\">המספר הזה לא נראה תקין, אז וואטסאפ יבקש לבחור איש קשר.</p>');\n}\n\n/* ---------- settings ---------- */\nfunction fillSettings(){for(const id of Object.keys(EV_FIELDS)){const el=$('#'+id);if(document.activeElement!==el)el.value=state.event[EV_FIELDS[id]]||'';}}\nfunction renderPreview(){\n  const k=state.tplKey,sorted=[...state.guests].sort(byName);\n  renderShare();\n  if(k==='general'){$('#pvLabel').textContent='כך זה ייראה';$('#tplPreview').innerHTML=linkify(esc(fill(state.tpl.general,null)));return;}\n  const sample=sorted.find(g=>k==='reminder'?g.status==='yes':g.status!=='no')||sorted[0]||{name:'משפחת כהן',code:'abc1234',status:'pending'};\n  $('#pvLabel').textContent='כך זה ייראה אצל '+sample.name;\n  $('#tplPreview').innerHTML=linkify(esc(fill(state.tpl[k],sample)));\n}\nfunction renderShare(){\n  $('#genLink').textContent=generalLink();\n  $('#waGen').href='https://wa.me/?text='+encodeURIComponent(fill(state.tpl.general,null));\n}\nfunction loadTpl(){\n  const k=state.tplKey;\n  $('#tplText').value=state.tpl[k]||'';\n  for(const b of document.querySelectorAll('#tplSeg button'))b.setAttribute('aria-pressed',String(b.dataset.tpl===k));\n  $('#tplHint').textContent=k==='general'?'ההודעה שנשלחת עם הלינק הכללי, לאנשים או לקבוצות. בלי שם אישי.':k==='request'?'נשלחת למי שטרם ענה או ענה אולי, עם הלינק האישי שלו.':'נשלחת למי שאישר הגעה, יום או יומיים לפני האירוע.';\n  renderPreview();\n}\nlet saveTimer;\nfunction scheduleSave(){\n  const ss=$('#saveState');ss.className='save-state';ss.textContent='שומר…';\n  clearTimeout(saveTimer);\n  saveTimer=setTimeout(()=>enqueue(async()=>{\n    try{await api('PUT','/api/settings',{event:state.event,tpl:state.tpl});ss.textContent='נשמר';}\n    catch(e){ss.className='save-state err';ss.textContent='השמירה נכשלה. בדוק את החיבור, השינוי יישמר בעריכה הבאה.';}\n  }),700);\n}\n\n/* ---------- shell ---------- */\nfunction setTab(t){\n  state.tab=t;\n  for(const b of document.querySelectorAll('.tab'))b.setAttribute('aria-selected',String(b.dataset.tab===t));\n  for(const id of ['board','round','settings'])$('#p-'+id).hidden=id!==t;\n  window.scrollTo(0,0);\n}\nfunction renderAll(){renderHeader();renderBoard();renderRound();renderPreview();}\nlet toastTimer;\nfunction toast(msg,action){\n  const t=$('#toast');t.innerHTML='';\n  const s=document.createElement('span');s.textContent=msg;t.append(s);\n  if(action&&action.href){const a=document.createElement('a');a.href=action.href;a.target='_blank';a.rel='noopener';a.textContent=action.label;a.addEventListener('click',()=>{t.hidden=true;});t.append(a);}\n  else if(action){const b=document.createElement('button');b.textContent=action.label;b.addEventListener('click',()=>{t.hidden=true;action.fn();});t.append(b);}\n  t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true;},action?(action.href?15000:6500):2800);\n}\nfunction quickTest(){\n  const n=state.guests.filter(g=>g.group==='בדיקה').length+1;\n  enqueue(()=>api('POST','/api/guests',{guests:[{name:'מוזמן לבדיקה '+n,phone:'',group:'בדיקה',invited:2}]}).then(r=>{\n    applyGuests(r.state.guests);state.round.queue=null;state.filter='all';state.group='all';state.q='';$('#search').value='';\n    const g=state.guests.filter(x=>x.group==='בדיקה').sort((a,b)=>b.id-a.id)[0];\n    if(g)state.expanded=g.id;\n    $('#importPanel').hidden=true;$('#importToggle').setAttribute('aria-expanded','false');\n    setTab('board');renderAll();\n    if(g)toast('נוצר \"'+g.name+'\". ענה בדף שלו, והתשובה תופיע כאן.',{label:'פתיחת הדף שלו',href:personalLink(g)});\n  },saveFailed));\n}\nfunction copy(text,done){\n  const fail=()=>toast('ההעתקה נחסמה. אפשר לסמן ולהעתיק ידנית: '+text);\n  try{navigator.clipboard.writeText(text).then(()=>toast(done||'הלינק הועתק'),fail);}catch(e){fail();}\n}\n/* ---------- arrival map ---------- */\nfunction renderMap(){\n  const img=$('#mapPreview');\n  if(state.map){img.src='/map?v='+encodeURIComponent(state.map.v);img.hidden=false;$('#mapRemove').hidden=false;$('#mapPick').textContent='החלפת התמונה';}\n  else{img.hidden=true;img.removeAttribute('src');$('#mapRemove').hidden=true;$('#mapPick').textContent='העלאת תמונה';}\n}\nfunction loadImage(file){\n  return new Promise((resolve,reject)=>{\n    const r=new FileReader();\n    r.onload=()=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=r.result;};\n    r.onerror=reject;r.readAsDataURL(file);\n  });\n}\nfunction encodeJpeg(im,max,q){\n  const s=Math.min(1,max/Math.max(im.naturalWidth,im.naturalHeight));\n  const c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.naturalWidth*s));c.height=Math.max(1,Math.round(im.naturalHeight*s));\n  const x=c.getContext('2d');x.fillStyle='#ffffff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);\n  return c.toDataURL('image/jpeg',q).split(',')[1];\n}\n$('#mapFile').addEventListener('change',async e=>{\n  const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;\n  const ss=$('#saveState');ss.className='save-state';ss.textContent='מעלה את המפה…';\n  try{\n    const im=await loadImage(f);\n    let full=encodeJpeg(im,1600,0.85);if(full.length>1800000)full=encodeJpeg(im,1200,0.72);\n    const thumb=encodeJpeg(im,800,0.72);\n    const r=await enqueue(()=>api('PUT','/api/map',{full:{type:'image/jpeg',data:full},thumb:{type:'image/jpeg',data:thumb}}));\n    state.map=r.map;renderMap();ss.textContent='המפה נשמרה';toast('המפה נשמרה. היא מופיעה עכשיו בדף של האורחים.');\n  }catch(err){ss.className='save-state err';ss.textContent='לא הצלחתי להעלות את התמונה. נסה צילום מסך או תמונה אחרת.';}\n});\n$('#mapRemove').addEventListener('click',()=>{\n  if(!window.confirm('להסיר את מפת ההגעה מהדף של האורחים?'))return;\n  enqueue(()=>api('DELETE','/api/map').then(()=>{state.map=null;renderMap();toast('המפה הוסרה');},saveFailed));\n});\n\n$('#copyGenLink').addEventListener('click',()=>copy(generalLink()));\n$('#copyGenMsg').addEventListener('click',()=>copy(fill(state.tpl.general,null),'ההודעה הועתקה. אפשר להדביק בכל צ\\'אט או קבוצה.'));\nfunction openImport(){const p=$('#importPanel');p.hidden=false;$('#importToggle').setAttribute('aria-expanded','true');}\n\n$('.tabs').addEventListener('click',e=>{const b=e.target.closest('.tab');if(b)setTab(b.dataset.tab);});\nfunction onFilterClick(e){const b=e.target.closest('[data-filter]');if(!b)return;const f=b.dataset.filter;state.filter=(b.classList.contains('lg')&&state.filter===f)?'all':f;state.expanded=null;renderBoard();}\n$('#stats').addEventListener('click',onFilterClick);\n$('#chips').addEventListener('click',onFilterClick);\n$('#search').addEventListener('input',e=>{state.q=e.target.value;renderList();});\n$('#groupSel').addEventListener('change',e=>{state.group=e.target.value;renderList();});\n\n$('#list').addEventListener('click',e=>{\n  const b=e.target.closest('[data-act]');if(!b)return;\n  if(b.dataset.act==='retry'){state.loadError=false;state.loaded=false;renderList();loadAll();return;}\n  if(b.dataset.act==='open-import'){openImport();$('#importText').focus();return;}\n  if(b.dataset.act==='quick-test'){quickTest();return;}\n  const li=b.closest('.row');const g=li&&byId(Number(li.dataset.id));if(!g)return;\n  switch(b.dataset.act){\n    case 'toggle':state.expanded=state.expanded===g.id?null:g.id;renderList();break;\n    case 'set-status':\n      if(g.status===b.dataset.s)return;\n      enqueue(()=>api('PATCH','/api/guests/'+g.id,{status:b.dataset.s}).then(r=>{Object.assign(g,normalize(r.guest));renderAll();toast(g.name+': '+ST[g.status].label);},saveFailed));\n      break;\n    case 'inc':case 'dec':{\n      const dlt=b.dataset.act==='inc'?1:-1;\n      const body=g.status==='pending'?{invited:Math.max(1,g.invited+dlt)}:{count:Math.max(1,g.count+dlt)};\n      enqueue(()=>api('PATCH','/api/guests/'+g.id,body).then(r=>{Object.assign(g,normalize(r.guest));renderAll();},saveFailed));\n      break;}\n    case 'copy':copy(personalLink(g));break;\n    case 'delete':\n      if(!window.confirm('למחוק את '+g.name+' מהרשימה? הלינק האישי שלו יפסיק לעבוד.'))return;\n      enqueue(()=>api('DELETE','/api/guests/'+g.id).then(()=>{state.guests=state.guests.filter(x=>x.id!==g.id);state.expanded=null;buildGroupSelect();renderAll();toast(g.name+' נמחק מהרשימה');},saveFailed));\n      break;\n  }\n});\n$('#list').addEventListener('change',e=>{\n  const field=e.target.dataset.field;if(!field)return;\n  const g=byId(Number(e.target.closest('.row').dataset.id));if(!g)return;\n  const value=e.target.value;\n  enqueue(()=>api('PATCH','/api/guests/'+g.id,{[field]:value}).then(r=>{Object.assign(g,normalize(r.guest));updateRow(g);if(field==='group')buildGroupSelect();toast('נשמר');},saveFailed));\n});\n\n$('#importToggle').addEventListener('click',e=>{const p=$('#importPanel');p.hidden=!p.hidden;e.currentTarget.setAttribute('aria-expanded',String(!p.hidden));if(!p.hidden)$('#importText').focus();});\n$('#quickTestBtn').addEventListener('click',quickTest);\n$('#importGo').addEventListener('click',()=>{\n  const rows=[];\n  for(const line of $('#importText').value.split(/\\r?\\n/)){\n    const p=line.split(/\\t|,/).map(x=>x.trim());\n    if(!p[0]||p[0]==='שם')continue;\n    rows.push({name:p[0],phone:p[1]||'',group:p[2]||'',invited:parseInt(p[3],10)||2});\n  }\n  if(!rows.length){toast('לא נמצאו שורות. כל שורה צריכה להתחיל בשם.');return;}\n  const replace=$('#importReplace').checked;\n  if(replace&&state.guests.length&&!window.confirm('למחוק את כל '+state.guests.length+' המוזמנים הקיימים ואת התשובות שלהם, ולהכניס את הרשימה החדשה? הלינקים הישנים יפסיקו לעבוד.'))return;\n  const btn=$('#importGo');btn.disabled=true;\n  enqueue(()=>api('POST','/api/guests',{guests:rows,replace}).then(r=>{\n    applyGuests(r.state.guests);state.round.queue=null;state.expanded=null;\n    $('#importText').value='';$('#importReplace').checked=false;$('#importPanel').hidden=true;$('#importToggle').setAttribute('aria-expanded','false');\n    renderAll();toast('נוספו '+r.added+' מוזמנים'+(r.skipped?', '+r.skipped+' כפולים או ריקים דולגו':''));\n  },saveFailed).finally(()=>{btn.disabled=false;}));\n});\n\n$('#audSeg').addEventListener('click',e=>{const b=e.target.closest('[data-aud]');if(!b)return;state.round.aud=b.dataset.aud;buildQueue();renderRound();});\n$('#roundCard').addEventListener('click',e=>{\n  const b=e.target.closest('[data-r]');if(!b)return;\n  const R=state.round;\n  switch(b.dataset.r){\n    case 'open':{const s=$('#roundCard .sent');if(s)s.classList.add('ready');break;}\n    case 'sent':{\n      const g=byId(R.queue[R.idx]);R.sent++;R.idx++;renderRound();\n      if(g)enqueue(()=>api('PATCH','/api/guests/'+g.id,{reminderSent:true}).then(r=>{Object.assign(g,normalize(r.guest));renderBoard();},saveFailed));\n      break;}\n    case 'skip':R.skipped++;R.idx++;renderRound();break;\n    case 'restart':buildQueue();renderRound();break;\n  }\n});\n\nfor(const id of Object.keys(EV_FIELDS)){\n  const el=$('#'+id),k=EV_FIELDS[id];\n  el.addEventListener('input',()=>{state.event[k]=el.value;renderHeader();renderPreview();renderList();renderRound();scheduleSave();});\n}\n$('#tplSeg').addEventListener('click',e=>{const b=e.target.closest('[data-tpl]');if(!b)return;state.tplKey=b.dataset.tpl;loadTpl();});\n$('#tplText').addEventListener('input',e=>{state.tpl[state.tplKey]=e.target.value;renderPreview();renderList();renderRound();scheduleSave();});\n$('#vars').innerHTML=VARS.map(v=>'<button class=\"var\" data-var=\"'+esc(v)+'\">{'+esc(v)+'}</button>').join('');\n$('#vars').addEventListener('click',e=>{\n  const b=e.target.closest('[data-var]');if(!b)return;\n  const ta=$('#tplText');ta.focus();\n  ta.setRangeText('{'+b.dataset.var+'}',ta.selectionStart,ta.selectionEnd,'end');\n  ta.dispatchEvent(new Event('input'));\n});\n$('#tplReset').addEventListener('click',()=>{state.tpl[state.tplKey]=state.defaults[state.tplKey]||'';loadTpl();renderList();renderRound();scheduleSave();toast('הנוסח חזר למקור');});\n\nrenderAll();\nloadAll();\n})();\n</script>\n</body>\n</html>\n";
+const ADMIN_HTML = `<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#21509F">
+<title>אישורי הגעה לבר המצווה</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700;900&family=IBM+Plex+Sans+Hebrew:wght@400;500;600;700&family=Rubik:wght@700&family=Heebo:wght@800&family=Secular+One&family=Suez+One&display=swap">
+<style>
+/* Layout: event band topped with tallit stripes, sticky tabs, single-column workspace up to 1100px */
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --sunken:#ECF0F6; --ink:#14203A; --muted:#5C6780; --line:#DCE2EC;
+  --tekhelet:#21509F; --tekhelet-hover:#1A4287; --on-tekhelet:#FFFFFF; --tekhelet-soft:#E3EBF8;
+  --yes:#1B7549; --yes-soft:#DFF1E6; --maybe:#8E5C08; --maybe-soft:#FAEED5; --no:#AE3A3C; --no-soft:#F7E3E2; --pending:#636D86; --pending-soft:#E9EDF3;
+  --bubble:#E2F2E4; --bubble-ink:#14203A;
+  --shadow:0 1px 2px rgba(20,32,58,.06),0 6px 18px rgba(20,32,58,.07);
+  --display:"Frank Ruhl Libre","David","Times New Roman",serif;
+  --sans:"IBM Plex Sans Hebrew","Arial Hebrew","Segoe UI",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --r-sm:8px; --r-md:12px; --r-lg:18px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0D1320; --surface:#151D2E; --sunken:#1B2438; --ink:#E6EBF5; --muted:#98A3BC; --line:#29344C;
+    --tekhelet:#82A6EE; --tekhelet-hover:#9DBAF3; --on-tekhelet:#0D1320; --tekhelet-soft:#1B2A4A;
+    --yes:#6CCB98; --yes-soft:#15301F; --maybe:#E5B65C; --maybe-soft:#33270F; --no:#EE8A88; --no-soft:#3A1A1B; --pending:#A3ACC2; --pending-soft:#222B3F;
+    --bubble:#173322; --bubble-ink:#E6EBF5;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.28);
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+h1,h2,h3,h4{margin:0;text-wrap:balance}
+p{margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--tekhelet);outline-offset:2px}
+.muted{color:var(--muted)}
+.wrap{max-width:1100px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.tallit{height:20px;background:linear-gradient(to bottom,transparent 0 4px,var(--tekhelet) 4px 6px,transparent 6px 8px,var(--tekhelet) 8px 14px,transparent 14px 16px,var(--tekhelet) 16px 18px,transparent 18px)}
+
+.band{background:var(--surface);border-bottom:1px solid var(--line)}
+.band-inner{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 32px;padding-block:16px 22px}
+.band-text{min-width:0}
+.ev-title{font-family:var(--display);font-weight:700;font-size:clamp(28px,5vw,40px);line-height:1.15}
+.ev-meta{display:flex;flex-wrap:wrap;color:var(--muted);margin-top:6px}
+.ev-meta span+span::before{content:"·";margin-inline:.55em}
+.ev-meta .heb{font-family:var(--display);font-weight:500;color:var(--tekhelet)}
+.ev-meta button{border:0;background:none;color:var(--tekhelet);padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.countdown{display:flex;align-items:baseline;gap:8px}
+.countdown .n{font-family:var(--display);font-weight:900;font-size:46px;line-height:1;color:var(--tekhelet);font-variant-numeric:tabular-nums}
+.countdown .l{color:var(--muted);font-size:14px}
+
+.tabs-bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+.tab{border:0;background:none;padding:12px 14px;font-size:14.5px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--tekhelet)}
+main.wrap{padding-block:20px 12px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r-sm);padding:8px 14px;font-weight:500;cursor:pointer;text-decoration:none;white-space:nowrap;line-height:1.3}
+.btn:hover{background:var(--sunken)}
+.btn.primary{background:var(--tekhelet);border-color:var(--tekhelet);color:var(--on-tekhelet)}
+.btn.primary:hover{background:var(--tekhelet-hover);border-color:var(--tekhelet-hover)}
+.btn.ghost{background:transparent;border-color:transparent}
+.btn.ghost:hover{background:var(--sunken)}
+.btn.sm{padding:5px 10px;font-size:13.5px}
+.btn.icon-only{padding:5px 7px}
+.btn.wa{color:var(--yes)}
+.btn.danger{color:var(--no)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.btn svg{width:16px;height:16px;flex:none}
+.inp{border:1px solid var(--line);background:var(--surface);border-radius:var(--r-sm);padding:7px 10px;min-width:0}
+.field{display:grid;gap:5px;min-width:0}
+.field label,.ed-label{font-size:12.5px;color:var(--muted);letter-spacing:.02em}
+.field .inp{width:100%}
+.hint{font-size:13px;color:var(--muted)}
+.sec-title{font-family:var(--display);font-weight:700;font-size:26px}
+.lede{color:var(--muted);max-width:60ch;margin-top:6px}
+
+.seg{display:inline-flex;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:3px;gap:3px}
+.seg button{border:0;background:transparent;border-radius:6px;padding:5px 11px;font-size:13.5px;cursor:pointer;color:var(--muted);display:inline-flex;gap:6px;align-items:center}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.seg button .c{opacity:.75;font-variant-numeric:tabular-nums}
+.seg .yes[aria-pressed="true"]{background:var(--yes);color:var(--surface)}
+.seg .maybe[aria-pressed="true"]{background:var(--maybe);color:var(--surface)}
+.seg .no[aria-pressed="true"]{background:var(--no);color:var(--surface)}
+.seg .pending[aria-pressed="true"]{background:var(--pending);color:var(--surface)}
+
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 10px;font-size:13px;font-weight:500;white-space:nowrap}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.yes{background:var(--yes-soft);color:var(--yes)}
+.pill.maybe{background:var(--maybe-soft);color:var(--maybe)}
+.pill.no{background:var(--no-soft);color:var(--no)}
+.pill.pending{background:var(--pending-soft);color:var(--pending)}
+
+.share{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;background:var(--tekhelet-soft);border:1px solid var(--line);border-radius:var(--r-md);padding:14px 18px;margin-bottom:14px}
+.share-text{display:flex;flex-direction:column;gap:3px;min-width:0}
+.share-link{font-family:var(--mono);font-size:14.5px;color:var(--tekhelet);font-weight:600;overflow-wrap:anywhere}
+.stats{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:12px;margin-bottom:18px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:16px 18px;min-width:0}
+.headcount{border-color:var(--tekhelet-soft);box-shadow:inset 0 3px 0 var(--tekhelet)}
+.headcount .eyebrow{font-size:13px;color:var(--muted);font-weight:500}
+.headcount .big{font-family:var(--display);font-weight:900;font-size:58px;line-height:1.05;color:var(--tekhelet);font-variant-numeric:tabular-nums}
+.headcount .sub{font-size:13.5px;color:var(--muted)}
+.bd-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.bd-head .pct{font-family:var(--display);font-weight:700;font-size:22px;font-variant-numeric:tabular-nums}
+.bar{display:flex;gap:2px;height:12px;border-radius:999px;overflow:hidden;background:var(--sunken);margin:12px 0 10px}
+.bar i{display:block;height:100%}
+.bar .yes{background:var(--yes)} .bar .maybe{background:var(--maybe)} .bar .no{background:var(--no)} .bar .pending{background:var(--pending);opacity:.45}
+.legend{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.lg{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:8px 10px;border-radius:var(--r-sm);border:1px solid transparent;background:none;cursor:pointer;text-align:start}
+.lg:hover{background:var(--sunken)}
+.lg[aria-pressed="true"]{border-color:var(--line);background:var(--sunken)}
+.lg .k{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.lg .k::before{content:"";width:8px;height:8px;border-radius:50%}
+.lg.yes .k::before{background:var(--yes)} .lg.maybe .k::before{background:var(--maybe)} .lg.no .k::before{background:var(--no)} .lg.pending .k::before{background:var(--pending)}
+.lg .v{font-size:21px;font-weight:600;font-variant-numeric:tabular-nums}
+.lg .v small{font-size:12px;color:var(--muted);font-weight:400}
+
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:13.5px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.chip .c{color:var(--muted);font-variant-numeric:tabular-nums}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip[aria-pressed="true"] .c{color:inherit;opacity:.75}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.search{width:190px;max-width:100%}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:18px;display:grid;gap:14px;min-width:0}
+.panel-title{font-size:17px;font-weight:600}
+.import{margin-bottom:12px}
+.import textarea{width:100%;resize:vertical;font-size:14px;line-height:1.6}
+.import-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.check{display:inline-flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
+
+.list-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden}
+.list{list-style:none;margin:0;padding:0}
+.list-head,.r-main{display:grid;grid-template-columns:minmax(0,2.3fr) minmax(0,1.1fr) minmax(0,.95fr) minmax(0,.7fr) minmax(0,1.7fr) 11.5rem;gap:12px;align-items:center;padding:10px 16px}
+.list-head{font-size:12px;color:var(--muted);letter-spacing:.03em;border-bottom:1px solid var(--line);background:var(--sunken);padding-block:8px}
+.row{border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row.open{background:var(--sunken)}
+.c-name{display:flex;flex-direction:column;min-width:0}
+.nm{font-weight:600;overflow-wrap:anywhere}
+.grp{font-size:12.5px;color:var(--muted)}
+.note{font-size:12.5px;color:var(--tekhelet)}
+.c-phone{font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
+.c-people{font-variant-numeric:tabular-nums}
+.c-act{font-size:13px;color:var(--muted);min-width:0}
+.c-btns{display:flex;gap:4px;justify-content:flex-end}
+.row.open [data-act="toggle"] svg{transform:rotate(180deg)}
+.empty{padding:32px 16px;color:var(--muted);text-align:center;display:grid;gap:12px;justify-items:center}
+.editor{display:flex;flex-wrap:wrap;gap:14px 22px;align-items:flex-end;padding:2px 16px 16px}
+.ed-block{display:flex;flex-direction:column;gap:6px;min-width:0}
+.ed-block.grow{flex:1 1 220px}
+.ed-block .inp{width:100%}
+.ed-fields input[dir="ltr"]{text-align:right}
+.ed-fields{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr);gap:10px;flex-basis:100%}
+.ed-links{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;flex-basis:100%}
+.ed-links .spacer{flex:1}
+.link-text{font-size:12.5px;color:var(--muted);font-family:var(--mono);overflow-wrap:anywhere}
+.stepper{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface)}
+.stepper button{width:36px;height:36px;border:0;background:transparent;font-size:18px;cursor:pointer;border-radius:var(--r-sm)}
+.stepper button:hover{background:var(--sunken)}
+.stepper button[disabled]{opacity:.35;cursor:not-allowed}
+.stepper output{min-width:2.2em;text-align:center;font-weight:600;font-variant-numeric:tabular-nums}
+@keyframes flash{from{background:var(--tekhelet-soft)}to{background:transparent}}
+.row.flash{animation:flash 2.6s ease-out}
+
+@media (max-width:900px){
+  .list-head{display:none}
+  .r-main{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"name status" "phone people" "act btns";gap:4px 12px;padding:12px 14px}
+  .c-name{grid-area:name} .c-status{grid-area:status;justify-self:end} .c-phone{grid-area:phone} .c-people{grid-area:people;justify-self:end;font-size:13.5px} .c-act{grid-area:act} .c-btns{grid-area:btns}
+  .c-people::before{content:"אורחים: ";color:var(--muted)}
+  .editor{padding-inline:14px}
+  .ed-fields{grid-template-columns:1fr}
+}
+@media (max-width:720px){ .stats{grid-template-columns:1fr} }
+@media (max-width:560px){ .legend{grid-template-columns:repeat(2,minmax(0,1fr))} .tools{width:100%} .tools .search{flex:1 1 140px} }
+
+.round{display:grid;gap:18px;max-width:700px}
+.round-head{display:grid;gap:12px}
+.round-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;box-shadow:var(--shadow);display:grid;gap:14px;min-width:0}
+.rc-top{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.progress{height:6px;background:var(--sunken);border-radius:999px;overflow:hidden}
+.progress i{display:block;height:100%;background:var(--tekhelet);transition:width .25s}
+.rc-guest .nm{font-family:var(--display);font-weight:700;font-size:26px}
+.rc-guest .meta{color:var(--muted);font-size:13.5px}
+.rc-actions{display:flex;flex-wrap:wrap;gap:8px}
+.rc-actions .sent.ready{border-color:var(--tekhelet);color:var(--tekhelet)}
+.rc-done,.rc-empty{display:grid;gap:10px;justify-items:start}
+.rc-done h3{font-family:var(--display);font-size:24px}
+.bubble{background:var(--bubble);color:var(--bubble-ink);border-radius:14px;border-start-start-radius:4px;padding:12px 14px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14.5px;line-height:1.6;max-width:48ch}
+.bubble .lnk{color:var(--tekhelet);text-decoration:underline;text-underline-offset:2px}
+
+.settings{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:16px;align-items:start}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#tplText{width:100%;resize:vertical;line-height:1.6;font-size:14.5px}
+.vars{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.var{font-size:12.5px;border:1px dashed var(--line);background:transparent;border-radius:999px;padding:3px 10px;cursor:pointer;color:var(--tekhelet)}
+.var:hover{background:var(--tekhelet-soft)}
+.pv{display:grid;gap:6px}
+.headline-preview{max-width:346px;border:1px dashed var(--line);border-radius:var(--r-sm);padding:14px 16px;line-height:1.25;text-align:right;background:var(--bg);color:var(--ink);text-wrap:balance}
+.map-preview{display:block;max-width:100%;max-height:240px;border-radius:var(--r-sm);border:1px solid var(--line)}
+.save-state{font-size:13px;color:var(--muted);min-height:1.4em}
+.save-state.err{color:var(--no)}
+@media (max-width:860px){ .settings{grid-template-columns:1fr} }
+@media (max-width:420px){ .field-row{grid-template-columns:1fr} }
+
+.foot{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;color:var(--muted);font-size:12.5px;padding-block:22px 36px}
+.foot form{margin:0}
+
+/* snapshot bar, and the sheets (snapshot list, reset) that open over the page */
+.snapbar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:12px 18px;margin-bottom:14px}
+.snapbar .t{display:flex;flex-direction:column;gap:2px;min-width:0}
+.snapbar .t b{font-size:16px}
+body.locked{overflow:hidden}
+.sheet-back{position:fixed;inset:0;z-index:30;background:rgba(8,14,26,.55);display:flex;align-items:flex-start;justify-content:center;padding:max(16px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+.sheet{background:var(--surface);color:var(--ink);border-radius:var(--r-lg);box-shadow:var(--shadow);width:min(720px,100%);display:flex;flex-direction:column;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);min-height:0;outline:none}
+.sheet.narrow{width:min(540px,100%)}
+.sheet-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:18px 20px 12px;border-bottom:1px solid var(--line)}
+.sheet-title{font-family:var(--display);font-weight:700;font-size:24px;line-height:1.2}
+.sheet-head .hint{margin-top:4px}
+.sheet-actions{display:flex;flex-wrap:wrap;gap:8px;padding:12px 20px;border-bottom:1px solid var(--line)}
+.sheet-body{overflow-y:auto;padding:4px 20px 20px;min-height:0;-webkit-overflow-scrolling:touch}
+.x{border:0;background:transparent;border-radius:var(--r-sm);width:36px;height:36px;font-size:22px;line-height:1;cursor:pointer;color:var(--muted);flex:none}
+.x:hover{background:var(--sunken);color:var(--ink)}
+.snap-group h3{display:flex;gap:8px;align-items:baseline;font-size:14.5px;font-weight:600;margin:16px 0 6px}
+.snap-group h3 .c{color:var(--muted);font-weight:500;font-variant-numeric:tabular-nums}
+.snap-list{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:var(--r-md)}
+.snap-row{display:grid;grid-template-columns:1.9rem minmax(0,1fr) auto 2.3rem;gap:4px 10px;align-items:center;padding:7px 10px 7px 6px;border-bottom:1px solid var(--line)}
+.snap-row:last-child{border-bottom:0}
+.snap-n{color:var(--muted);font-variant-numeric:tabular-nums;font-size:13px;text-align:center}
+.snap-row .nm{font-weight:500}
+.snap-phone{font-variant-numeric:tabular-nums;color:var(--ink);text-decoration:none;font-size:14px;white-space:nowrap}
+.snap-phone:hover{color:var(--tekhelet);text-decoration:underline}
+.snap-hint{grid-column:2/-1;font-size:12.5px;color:var(--maybe)}
+.reset-list{margin:10px 0;padding-inline-start:20px;display:grid;gap:8px}
+.warn{background:var(--no-soft);color:var(--no);border-radius:var(--r-sm);padding:10px 12px;font-size:14px;font-weight:500}
+.reset-form{display:grid;gap:10px;padding:14px 20px 20px;border-top:1px solid var(--line)}
+.reset-form .inp{max-width:180px;font-size:18px;letter-spacing:.2em;text-align:center}
+.reset-form .tools{justify-content:flex-start}
+.btn.danger-solid{background:var(--no);border-color:var(--no);color:var(--surface)}
+.btn.danger-solid:hover{filter:brightness(.92)}
+@media (max-width:480px){.sheet-head,.sheet-actions{padding-inline:14px}.sheet-body{padding-inline:12px}.reset-form{padding-inline:14px}.sheet-title{font-size:21px}}
+
+.toast{position:fixed;left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));margin-inline:auto;width:fit-content;bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);border-radius:14px;padding-block:10px;padding-inline:16px 10px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;box-shadow:var(--shadow);z-index:40;font-size:14px}
+.toast span{overflow-wrap:anywhere}
+.toast button,.toast a{background:transparent;border:1px solid currentColor;color:inherit;border-radius:999px;padding:3px 12px;cursor:pointer;white-space:nowrap;text-decoration:none;font-size:14px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="band">
+  <div class="tallit" aria-hidden="true"></div>
+  <div class="wrap band-inner">
+    <div class="band-text">
+      <h1 class="ev-title" id="evTitle">בר המצווה</h1>
+      <p class="ev-meta" id="evMeta"></p>
+    </div>
+    <div class="countdown" id="countdown"></div>
+  </div>
+</header>
+
+<div class="tabs-bar">
+  <div class="wrap">
+    <div class="tabs" role="tablist" aria-label="אזורים">
+      <button class="tab" role="tab" id="t-board" data-tab="board" aria-controls="p-board" aria-selected="true">לוח בקרה</button>
+      <button class="tab" role="tab" id="t-round" data-tab="round" aria-controls="p-round" aria-selected="false">סבב תזכורות</button>
+      <button class="tab" role="tab" id="t-settings" data-tab="settings" aria-controls="p-settings" aria-selected="false">פרטי האירוע ונוסחים</button>
+    </div>
+  </div>
+</div>
+
+<main class="wrap">
+  <section id="p-board" role="tabpanel" aria-labelledby="t-board">
+    <div class="share">
+      <div class="share-text">
+        <span class="ed-label">הלינק לכל האורחים</span>
+        <span class="share-link" id="genLink" dir="ltr"></span>
+        <span class="hint">כל מי שפותח אותו כותב שם וטלפון ועונה. התשובה מופיעה כאן.</span>
+      </div>
+      <div class="tools">
+        <button class="btn sm" id="copyGenLink" type="button">העתקת הלינק</button>
+        <button class="btn sm" id="copyGenMsg" type="button">העתקת ההודעה</button>
+        <a class="btn sm primary" id="waGen" target="_blank" rel="noopener">שליחה בוואטסאפ</a>
+      </div>
+    </div>
+    <div class="snapbar" id="snapBar">
+      <div class="t"><b id="snapCount">מי עוד לא אישר הגעה?</b><span class="hint">רשימה שמית עם טלפונים, אפשר להעתיק או לשלוח בוואטסאפ</span></div>
+      <button class="btn primary" id="snapBtn" type="button">תמונת מצב: מי טרם אישר</button>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="toolbar">
+      <div class="chips" id="chips" role="group" aria-label="סינון לפי סטטוס"></div>
+      <div class="tools">
+        <input id="search" class="inp search" type="search" placeholder="חיפוש שם או טלפון" aria-label="חיפוש שם או טלפון">
+        <select id="groupSel" class="inp" aria-label="סינון לפי קבוצה"></select>
+        <button id="importToggle" class="btn" aria-expanded="false" aria-controls="importPanel">ייבוא רשימה</button>
+        <a class="btn" href="/api/export.csv">ייצוא לאקסל</a>
+      </div>
+    </div>
+    <div id="importPanel" class="panel import" hidden>
+      <div class="field">
+        <label for="importText">שורה לכל הזמנה: שם, טלפון, קבוצה, מספר מוזמנים</label>
+        <textarea id="importText" class="inp" rows="6" placeholder="משפחת כהן, 050-1234567, משפחה, 4&#10;דנה ויואב לוי, 052-7654321, חברים, 2"></textarea>
+      </div>
+      <p class="hint">אפשר להדביק ישר עמודות מאקסל או מגוגל שיטס. רק השם חובה. שורות עם טלפון שכבר קיים ברשימה ידולגו.</p>
+      <div class="import-actions">
+        <label class="check"><input type="checkbox" id="importReplace"> למחוק קודם את כל הרשימה הקיימת</label>
+        <div class="tools"><button id="quickTestBtn" class="btn ghost" type="button">בדיקה מהירה</button><button id="importGo" class="btn primary">הוספה לרשימה</button></div>
+      </div>
+    </div>
+    <div class="list-card">
+      <div class="list-head" aria-hidden="true"><span>מוזמנים</span><span>טלפון</span><span>סטטוס</span><span>אורחים</span><span>פעילות אחרונה</span><span></span></div>
+      <ul class="list" id="list"><li class="empty">טוען את הרשימה…</li></ul>
+    </div>
+  </section>
+
+  <section id="p-round" role="tabpanel" aria-labelledby="t-round" hidden>
+    <div class="round">
+      <div class="round-head">
+        <div>
+          <h2 class="sec-title">סבב תזכורות</h2>
+          <p class="lede">כל לחיצה פותחת את הוואטסאפ שלך עם הודעה אישית מוכנה, כולל הלינק של אותו מוזמן. שולחים, חוזרים לכאן ועוברים לבא בתור.</p>
+        </div>
+        <div class="seg" id="audSeg" role="group" aria-label="למי לשלוח"></div>
+        <p class="hint" id="audHint"></p>
+      </div>
+      <div class="round-card" id="roundCard"></div>
+    </div>
+  </section>
+
+  <section id="p-settings" role="tabpanel" aria-labelledby="t-settings" hidden>
+    <div class="settings">
+      <div class="panel">
+        <h2 class="panel-title">פרטי האירוע</h2>
+        <div class="field"><label for="evBoy">שם חתן בר המצווה</label><input id="evBoy" class="inp"></div>
+        <div class="field-row">
+          <div class="field"><label for="evDate">תאריך</label><input id="evDate" type="date" class="inp"></div>
+          <div class="field"><label for="evTime">שעת קבלת פנים</label><input id="evTime" type="time" class="inp"></div>
+        </div>
+        <div class="field"><label for="evHeadline">כותרת בדף האורחים</label><input id="evHeadline" class="inp"><span class="hint">{חתן} מתחלף בשם. כל הכותרת באותו גודל.</span></div>
+        <div class="field"><label for="evFont">גופן הכותרת</label>
+          <select id="evFont" class="inp">
+            <option value="rubik">Rubik: מודרני ונקי</option>
+            <option value="heebo">Heebo: חזק ובולט</option>
+            <option value="secular">Secular One: עגול וחגיגי</option>
+            <option value="suez">Suez One: קלאסי, עם סריפים</option>
+            <option value="frank">Frank Ruhl Libre: ספרותי</option>
+          </select>
+        </div>
+        <div class="field"><span class="ed-label">כך תיראה הכותרת בטלפון</span><div class="headline-preview" id="headlinePreview"></div></div>
+        <div class="field"><label for="evVenue">מקום</label><input id="evVenue" class="inp" placeholder="שם האולם"></div>
+        <div class="field"><label for="evAddr">כתובת (לקישור הניווט)</label><input id="evAddr" class="inp" placeholder="רחוב, מספר, עיר"></div>
+        <div class="field">
+          <span class="ed-label">מפת הגעה</span>
+          <img id="mapPreview" class="map-preview" alt="מפת ההגעה שהועלתה" hidden>
+          <div class="tools">
+            <label class="btn sm" for="mapFile" id="mapPick">העלאת תמונה</label>
+            <input id="mapFile" type="file" accept="image/*" hidden>
+            <button class="btn sm ghost danger" id="mapRemove" type="button" hidden>הסרה</button>
+          </div>
+          <p class="hint">התמונה תופיע בדף שהאורחים פותחים, וגם כתמונה בהודעה בוואטסאפ.</p>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="evSender">חתימה בהודעות</label><input id="evSender" class="inp" placeholder="למשל: אלי והמשפחה"></div>
+          <div class="field"><label for="evRsvpBy">לבקש תשובה עד</label><input id="evRsvpBy" type="date" class="inp"></div>
+        </div>
+        <p class="hint" id="hebHint"></p>
+        <p class="save-state" id="saveState" role="status" aria-live="polite"></p>
+      </div>
+      <div class="panel">
+        <h2 class="panel-title">נוסחי ההודעות</h2>
+        <div class="seg" id="tplSeg" role="group" aria-label="איזה נוסח">
+          <button data-tpl="general" aria-pressed="false">הלינק הכללי</button>
+          <button data-tpl="request" aria-pressed="true">בקשה אישית</button>
+          <button data-tpl="reminder" aria-pressed="false">תזכורת לאירוע</button>
+        </div>
+        <p class="hint" id="tplHint"></p>
+        <textarea id="tplText" class="inp" rows="10" aria-label="נוסח ההודעה"></textarea>
+        <div>
+          <span class="ed-label">שדות שמתמלאים לבד, לחיצה מוסיפה אותם לנוסח</span>
+          <div class="vars" id="vars"></div>
+        </div>
+        <div><button class="btn sm ghost" id="tplReset">חזרה לנוסח המקורי</button></div>
+        <div class="pv"><span class="ed-label" id="pvLabel"></span><div class="bubble" id="tplPreview"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot">
+    <span id="syncNote">הרשימה מתעדכנת לבד כל חצי דקה.</span>
+    <div class="tools">
+      <button class="btn sm ghost danger" id="resetBtn" type="button">איפוס אחרי בדיקות</button>
+      <form method="post" action="/admin/logout"><button class="btn sm ghost" type="submit">יציאה</button></form>
+    </div>
+  </div>
+</main>
+
+<div class="sheet-back" id="snapSheet" hidden>
+  <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="snapTitle" tabindex="-1">
+    <header class="sheet-head">
+      <div><h2 class="sheet-title" id="snapTitle">טרם אישרו הגעה</h2><p class="hint" id="snapMeta"></p></div>
+      <button class="x" type="button" data-close aria-label="סגירה">×</button>
+    </header>
+    <div class="sheet-actions">
+      <button class="btn sm" id="snapCopy" type="button">העתקת הרשימה</button>
+      <a class="btn sm wa" id="snapShare" target="_blank" rel="noopener">שליחת הרשימה בוואטסאפ</a>
+      <button class="btn sm" id="snapRound" type="button">לשלוח לכולם תזכורת אישית</button>
+    </div>
+    <div class="sheet-body" id="snapBody"></div>
+  </section>
+</div>
+
+<div class="sheet-back" id="resetSheet" hidden>
+  <section class="sheet narrow" role="dialog" aria-modal="true" aria-labelledby="resetTitle" tabindex="-1">
+    <header class="sheet-head">
+      <h2 class="sheet-title" id="resetTitle">איפוס אחרי בדיקות</h2>
+      <button class="x" type="button" data-close aria-label="סגירה">×</button>
+    </header>
+    <div class="sheet-body" id="resetBody"></div>
+    <form class="reset-form" id="resetForm" autocomplete="off">
+      <div class="field"><label for="resetPin">קוד איפוס</label><input id="resetPin" class="inp" type="password" inputmode="numeric" autocomplete="off" maxlength="12" data-autofocus></div>
+      <p class="save-state err" id="resetErr" role="alert"></p>
+      <div class="tools"><button class="btn danger-solid" id="resetGo" type="submit">איפוס</button><button class="btn ghost" type="button" data-close>ביטול</button></div>
+    </form>
+  </section>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(function(){
+'use strict';
+const $=(s,el)=>(el||document).querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const DAY=86400000;
+const reduceMotion=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const ICON={
+  chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.5L3 21l2-5.5A8.4 8.4 0 1 1 21 11.5z"/></svg>',
+  chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
+  copy:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>',
+  ext:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>'
+};
+const ST={yes:{label:'מגיעים'},maybe:{label:'אולי'},no:{label:'לא מגיעים'},pending:{label:'טרם ענו'}};
+const VARS=['שם','חתן','יום','תאריך','תאריך עברי','שעה','מקום','כתובת','לינק','ניווט','שולח'];
+const FONT_OPTS={rubik:['Rubik',700,30],heebo:['Heebo',800,31],secular:['Secular One',400,31],suez:['Suez One',400,30],frank:['Frank Ruhl Libre',900,32]};
+const DEFAULT_HEADLINE='הנה זה מגיע! מזכירים לכם את חגיגת בר המצווה של {חתן}';
+function renderHeadlinePreview(){
+  const el=$('#headlinePreview');if(!el)return;
+  const f=FONT_OPTS[state.event.font]||FONT_OPTS.rubik;
+  el.style.fontFamily="'"+f[0]+"', 'Arial Hebrew', Arial, sans-serif";el.style.fontWeight=String(f[1]);el.style.fontSize=f[2]+'px';
+  const h=state.event.headline||DEFAULT_HEADLINE;
+  el.textContent=state.event.boy?h.replace(/\\{חתן\\}/g,state.event.boy):h.replace(/\\s*של\\s*\\{חתן\\}/g,'').replace(/\\{חתן\\}/g,'');
+}
+const EV_FIELDS={evFont:'font',evBoy:'boy',evHeadline:'headline',evDate:'date',evTime:'time',evVenue:'venue',evAddr:'address',evSender:'sender',evRsvpBy:'rsvpBy'};
+
+const state={
+  event:{},tpl:{request:'',reminder:''},defaults:{request:'',reminder:''},base:location.origin,guests:[],loaded:false,loadError:false,
+  filter:'all',group:'all',q:'',expanded:null,tab:'board',
+  round:{aud:'pending',queue:null,idx:0,sent:0,skipped:0},
+  tplKey:'general'
+};
+const byId=id=>state.guests.find(g=>g.id===id);
+const byName=(a,b)=>a.name.localeCompare(b.name,'he');
+
+/* ---------- server ---------- */
+async function api(method,path,body){
+  const res=await fetch(path,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,credentials:'same-origin'});
+  if(res.status===401){location.reload();throw new Error('unauthorized');}
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  return res.json();
+}
+let chain=Promise.resolve();
+function enqueue(fn){chain=chain.then(fn,fn);return chain;}
+function normalize(g){return Object.assign({},g,{answeredAt:g.answeredAt?new Date(g.answeredAt):null,lastReminder:g.lastReminder?new Date(g.lastReminder):null});}
+function saveFailed(e){if(!e||e.message!=='unauthorized')toast('לא הצלחתי לשמור. בדוק את החיבור ונסה שוב.');}
+
+function applyGuests(list){
+  state.guests=list.map(normalize);
+  state.loaded=true;state.loadError=false;
+  if(state.round.queue)state.round.queue=state.round.queue.filter(id=>byId(id));
+  buildGroupSelect();
+}
+async function loadAll(){
+  try{
+    const s=await api('GET','/api/state');
+    state.event=s.event;state.tpl=s.tpl;state.defaults=s.defaults;state.base=s.base||location.origin;state.map=s.map||null;renderMap();
+    applyGuests(s.guests);
+    fillSettings();loadTpl();
+    if(!state.guests.length)openImport();
+  }catch(e){state.loadError=true;}
+  renderAll();
+}
+function editingInList(){const a=document.activeElement;return a&&(a.closest('#list')||a.closest('#importPanel'))&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA');}
+async function refresh(){
+  if(!state.loaded||editingInList())return;
+  try{const s=await api('GET','/api/state');applyGuests(s.guests);renderBoard();renderRound();renderPreview();}catch(e){}
+}
+setInterval(()=>{if(document.visibilityState==='visible')refresh();},30000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refresh();});
+
+/* ---------- dates and links ---------- */
+function today0(){const n=new Date();return new Date(n.getFullYear(),n.getMonth(),n.getDate());}
+function dayOf(s){const p=String(s||'').split('-').map(Number);if(p.length!==3||!p[0]||!p[1]||!p[2])return null;return new Date(p[0],p[1]-1,p[2]);}
+const evDate=()=>dayOf(state.event.date);
+function fmt(d,opts,loc){try{return new Intl.DateTimeFormat(loc||'he-IL',opts).format(d);}catch(e){return d.toLocaleDateString();}}
+const weekday=d=>fmt(d,{weekday:'long'});
+const dateLong=d=>fmt(d,{day:'numeric',month:'long',year:'numeric'});
+const dateShort=d=>fmt(d,{day:'numeric',month:'long'});
+function gematria(n){const o=['','א','ב','ג','ד','ה','ו','ז','ח','ט'],t=['','י','כ','ל','מ','נ','ס','ע','פ','צ'],h=['','ק','ר','ש','ת','תק','תר','תש','תת','תתק'];const r=n%100;const s=h[Math.floor(n/100)]+(r===15?'טו':r===16?'טז':t[Math.floor(r/10)]+o[r%10]);return s.length===1?s+'׳':s.slice(0,-1)+'״'+s.slice(-1);}
+function hebDate(d){try{const p=new Intl.DateTimeFormat('he-IL-u-ca-hebrew',{day:'numeric',month:'long',year:'numeric'}).formatToParts(d);const get=x=>(p.find(q=>q.type===x)||{}).value;const day=parseInt(get('day'),10),year=parseInt(get('year'),10),month=get('month');return day&&year&&month?gematria(day)+' ב'+month+' '+gematria(year%1000):'';}catch(e){return '';}}
+const rtf=(()=>{try{return new Intl.RelativeTimeFormat('he',{numeric:'auto'});}catch(e){return null;}})();
+function ago(d){if(!d)return '';const days=Math.round((today0()-new Date(d.getFullYear(),d.getMonth(),d.getDate()))/DAY);return rtf?rtf.format(-days,'day'):'לפני '+days+' ימים';}
+function personalLink(g){return state.base+'/r/'+g.code;}
+function generalLink(){return state.base+'/';}
+function wazeLink(){return state.base+'/waze';}
+function intlPhone(p){let d=String(p||'').replace(/\\D/g,'');if(d.startsWith('00'))d=d.slice(2);if(d.startsWith('0'))d='972'+d.slice(1);return d.length>=11&&d.length<=13?d:'';}
+function vars(g){
+  const d=evDate();
+  return {'שם':g?g.name:'','חתן':state.event.boy||'','יום':d?weekday(d):'','תאריך':d?dateShort(d):'','תאריך עברי':d?hebDate(d):'','שעה':state.event.time||'','מקום':state.event.venue||'','כתובת':state.event.address||'','לינק':g&&g.code?personalLink(g):generalLink(),'ניווט':wazeLink(),'שולח':state.event.sender||''};
+}
+function fill(t,g){const v=vars(g);return String(t||'').replace(/\\{([^{}]+)\\}/g,(m,k)=>Object.prototype.hasOwnProperty.call(v,k)?v[k]:m);}
+function tplFor(g){return g.status==='yes'?'reminder':g.status==='no'?null:'request';}
+function waLink(g,key){return 'https://wa.me/'+intlPhone(g.phone)+'?text='+encodeURIComponent(fill(state.tpl[key],g));}
+function linkify(escaped){return escaped.replace(/https?:\\/\\/[^\\s<]+/g,m=>'<span class="lnk" dir="ltr">'+m+'</span>');}
+const pill=s=>'<span class="pill '+s+'">'+ST[s].label+'</span>';
+function stats(){
+  const s={total:0,yes:0,no:0,maybe:0,pending:0,yesP:0,maybeP:0,invitedP:0};
+  for(const g of state.guests){s.total++;s[g.status]++;s.invitedP+=g.invited;if(g.status==='yes')s.yesP+=g.count;if(g.status==='maybe')s.maybeP+=g.count;}
+  return s;
+}
+
+/* ---------- header ---------- */
+function renderHeader(){
+  renderHeadlinePreview();
+  const e=state.event,d=evDate();
+  $('#evTitle').textContent=e.boy?'בר המצווה של '+e.boy:'בר המצווה';
+  const parts=[];
+  if(d){parts.push('<span>'+esc(weekday(d)+', '+dateLong(d))+'</span>');const h=hebDate(d);if(h)parts.push('<span class="heb">'+esc(h)+'</span>');}
+  if(e.time&&d)parts.push('<span>'+esc(e.time)+'</span>');
+  if(e.venue)parts.push('<span>'+esc(e.venue)+'</span>');
+  if(state.loaded&&(!e.boy||!d))parts.push('<span><button type="button" data-goto="settings">להשלמת פרטי האירוע</button></span>');
+  $('#evMeta').innerHTML=parts.join('');
+  const cd=$('#countdown');
+  if(!d){cd.innerHTML='';}
+  else{const n=Math.round((d-today0())/DAY);cd.innerHTML=n>1?'<span class="n">'+n+'</span><span class="l">ימים לאירוע</span>':n===1?'<span class="n">מחר</span>':n===0?'<span class="n">היום</span>':'<span class="l">האירוע עבר</span>';}
+  $('#hebHint').textContent=d&&hebDate(d)?'התאריך העברי: '+hebDate(d):'';
+}
+$('#evMeta').addEventListener('click',e=>{if(e.target.closest('[data-goto]'))setTab('settings');});
+
+/* ---------- board ---------- */
+function renderStats(){
+  const s=stats(),answered=s.total-s.pending,pct=s.total?Math.round(answered/s.total*100):0;
+  const seg=k=>s[k]?'<i class="'+k+'" style="flex:'+s[k]+' 1 0"></i>':'';
+  const lg=k=>'<button class="lg '+k+'" data-filter="'+k+'" aria-pressed="'+(state.filter===k)+'"><span class="k">'+ST[k].label+'</span><span class="v">'+s[k]+(k==='yes'?' <small>הזמנות · '+s.yesP+' אורחים</small>':k==='maybe'?' <small>הזמנות · '+s.maybeP+' אורחים</small>':'')+'</span></button>';
+  $('#stats').innerHTML=
+    '<div class="tile headcount"><div class="eyebrow">אורחים שאישרו הגעה</div><div class="big">'+s.yesP+'</div>'+
+    '<div class="sub">ב־'+s.yes+' הזמנות, מתוך כ־'+s.invitedP+' אורחים שהוזמנו'+(s.maybeP?'<br>עוד '+s.maybeP+' אורחים סימנו אולי':'')+'</div></div>'+
+    '<div class="tile breakdown"><div class="bd-head"><span>ענו <b>'+answered+'</b> מתוך '+s.total+' הזמנות</span><span class="pct">'+pct+'%</span></div>'+
+    '<div class="bar" role="img" aria-label="'+s.yes+' מגיעים, '+s.maybe+' אולי, '+s.no+' לא מגיעים, '+s.pending+' טרם ענו">'+seg('yes')+seg('maybe')+seg('no')+seg('pending')+'</div>'+
+    '<div class="legend">'+lg('yes')+lg('maybe')+lg('no')+lg('pending')+'</div></div>';
+}
+function renderChips(){
+  const s=stats();
+  const F=[['all','הכל',s.total],['pending','טרם ענו',s.pending],['yes','מגיעים',s.yes],['maybe','אולי',s.maybe],['no','לא מגיעים',s.no]];
+  $('#chips').innerHTML=F.map(([k,l,c])=>'<button class="chip" data-filter="'+k+'" aria-pressed="'+(state.filter===k)+'">'+l+'<span class="c">'+c+'</span></button>').join('');
+}
+function buildGroupSelect(){
+  const groups=[...new Set(state.guests.map(g=>g.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'he'));
+  if(state.group!=='all'&&!groups.includes(state.group))state.group='all';
+  const sel=$('#groupSel');if(document.activeElement===sel)return;
+  sel.innerHTML='<option value="all">כל הקבוצות</option>'+groups.map(g=>'<option value="'+esc(g)+'">'+esc(g)+'</option>').join('');
+  sel.value=state.group;sel.hidden=!groups.length;
+}
+function filtered(){
+  const q=state.q.trim(),qd=q.replace(/\\D/g,'');
+  return state.guests.filter(g=>(state.filter==='all'||g.status===state.filter)&&(state.group==='all'||g.group===state.group)&&(!q||g.name.includes(q)||(qd&&g.phone.replace(/\\D/g,'').includes(qd)))).sort(byName);
+}
+function activity(g){
+  if(g.status!=='pending'&&g.source==='excel')return 'אישרו לפי האקסל';
+  if(g.status!=='pending')return (g.source==='link'?'ענו דרך הלינק':'סומן ידנית')+' · '+ago(g.answeredAt);
+  if(g.reminders)return (g.reminders===1?'נשלחה תזכורת':'נשלחו '+g.reminders+' תזכורות')+' · '+ago(g.lastReminder);
+  return 'עוד לא נשלחה תזכורת';
+}
+function stepper(n,disabled){
+  return '<div class="stepper"><button data-act="inc" aria-label="להוסיף"'+(disabled?' disabled':'')+'>+</button><output>'+n+'</output><button data-act="dec" aria-label="להוריד"'+(disabled||n<=1?' disabled':'')+'>−</button></div>';
+}
+function rMainHTML(g){
+  const open=state.expanded===g.id,key=tplFor(g);
+  const people=g.status==='yes'?'<b>'+g.count+'</b>':g.status==='maybe'?'<span dir="ltr">'+g.count+'?</span>':g.status==='no'?'—':'<span class="muted">הוזמנו '+g.invited+'</span>';
+  const wa=key&&g.phone?'<a class="btn sm wa" href="'+esc(waLink(g,key))+'" target="_blank" rel="noopener" title="'+(key==='request'?'שליחת בקשת אישור הגעה בוואטסאפ':'שליחת תזכורת לאירוע בוואטסאפ')+'">'+ICON.chat+'<span>'+(key==='request'?'בקשת אישור':'תזכורת')+'</span></a>':'';
+  return '<div class="c-name"><span class="nm">'+esc(g.name)+'</span>'+(g.group?'<span class="grp">'+esc(g.group)+'</span>':'')+(g.note?'<span class="note">'+esc(g.note)+'</span>':'')+'</div>'+
+    '<div class="c-phone" dir="ltr">'+esc(g.phone||'—')+'</div>'+
+    '<div class="c-status">'+pill(g.status)+'</div>'+
+    '<div class="c-people">'+people+'</div>'+
+    '<div class="c-act">'+esc(activity(g))+'</div>'+
+    '<div class="c-btns">'+wa+'<button class="btn sm ghost icon-only" data-act="toggle" aria-expanded="'+open+'" aria-label="עריכת '+esc(g.name)+'">'+ICON.chev+'</button></div>';
+}
+function editorHTML(g){
+  const editsInvited=g.status==='pending';
+  const n=editsInvited?g.invited:g.status==='no'?0:g.count;
+  const f=(field,label,val,dir)=>'<div class="field"><label for="f-'+field+'-'+g.id+'">'+label+'</label><input id="f-'+field+'-'+g.id+'" class="inp" data-field="'+field+'" value="'+esc(val)+'"'+(dir?' dir="'+dir+'"':'')+'></div>';
+  return '<div class="editor">'+
+    '<div class="ed-block"><span class="ed-label">סטטוס</span><div class="seg" role="group" aria-label="סטטוס">'+
+      ['yes','maybe','no','pending'].map(s=>'<button class="'+s+'" data-act="set-status" data-s="'+s+'" aria-pressed="'+(g.status===s)+'">'+ST[s].label+'</button>').join('')+'</div></div>'+
+    '<div class="ed-block"><span class="ed-label">'+(editsInvited?'מספר מוזמנים':'מספר מגיעים')+'</span>'+stepper(n,g.status==='no')+'</div>'+
+    '<div class="ed-block grow"><label class="ed-label" for="f-note-'+g.id+'">הערה (המוזמן רואה אותה)</label><input id="f-note-'+g.id+'" class="inp" data-field="note" value="'+esc(g.note)+'" placeholder="למשל: אחד מהם צמחוני"></div>'+
+    '<div class="ed-fields">'+f('name','שם בהזמנה',g.name)+f('phone','טלפון',g.phone,'ltr')+f('group','קבוצה',g.group)+'</div>'+
+    '<div class="ed-links"><a class="btn sm ghost" href="'+esc(personalLink(g))+'" target="_blank" rel="noopener">'+ICON.ext+'הדף של המוזמן</a>'+
+    '<button class="btn sm ghost" data-act="copy">'+ICON.copy+'העתקת הלינק</button><span class="link-text" dir="ltr">'+esc(personalLink(g))+'</span>'+
+    '<span class="spacer"></span><button class="btn sm ghost danger" data-act="delete">מחיקה</button></div>'+
+    '</div>';
+}
+function rowHTML(g){return '<li class="row'+(state.expanded===g.id?' open':'')+'" data-id="'+g.id+'"><div class="r-main">'+rMainHTML(g)+'</div>'+(state.expanded===g.id?editorHTML(g):'')+'</li>';}
+function renderList(){
+  const el=$('#list');
+  if(state.loadError){el.innerHTML='<li class="empty"><p>לא הצלחתי לטעון את הרשימה.</p><button class="btn" data-act="retry">לנסות שוב</button></li>';return;}
+  if(!state.loaded){el.innerHTML='<li class="empty">טוען את הרשימה…</li>';return;}
+  if(!state.guests.length){el.innerHTML='<li class="empty"><p>עוד אין תשובות. שלח לאורחים את הלינק שלמעלה, וכל מי שעונה יופיע כאן.<br>יש לך רשימת מוזמנים? אפשר גם לייבא אותה, וכל מוזמן יקבל לינק אישי.</p><div class="tools"><button class="btn" data-act="open-import">ייבוא רשימה</button><button class="btn" data-act="quick-test">בדיקה מהירה</button></div></li>';return;}
+  const rows=filtered();
+  el.innerHTML=rows.length?rows.map(rowHTML).join(''):'<li class="empty">אין מוזמנים שמתאימים לסינון הזה.</li>';
+}
+function renderBoard(){renderSnapBar();renderStats();renderChips();renderList();if(!$('#snapSheet').hidden)renderSnapshot();}
+function updateRow(g){const li=document.querySelector('.row[data-id="'+g.id+'"]');if(li)li.querySelector('.r-main').innerHTML=rMainHTML(g);renderSnapBar();renderStats();renderChips();}
+
+/* ---------- snapshot: who has not confirmed yet ---------- */
+const GENERAL_GROUP='לינק כללי';
+const STOPWORDS=new Set(['משפחת','משפחה','המשפחה','של','אח','אחות','אמא','אבא','חבר','וחבר','שלה','שלו','אנחנו']);
+function nameTokens(n){return String(n||'').split(/[\\s+(),.\\-־'"׳״]+/).filter(t=>t.length>=3&&!STOPWORDS.has(t));}
+// Someone on the list may have answered on the general link from another phone: flag a shared name word as a hint.
+function linkMatches(g,links){const t=new Set(nameTokens(g.name));if(!t.size)return [];return links.filter(l=>nameTokens(l.name).some(x=>t.has(x)));}
+function snapshotData(){
+  const pend=state.guests.filter(g=>g.status==='pending');
+  const maybe=state.guests.filter(g=>g.status==='maybe').sort(byName);
+  const links=state.guests.filter(g=>g.group===GENERAL_GROUP&&g.status!=='pending');
+  return {pend,maybe,links};
+}
+function groupRows(list){
+  const m=new Map();
+  for(const g of [...list].sort((a,b)=>a.id-b.id)){const k=g.group||'בלי קבוצה';if(!m.has(k))m.set(k,[]);m.get(k).push(g);}
+  for(const arr of m.values())arr.sort(byName);
+  return [...m.entries()];
+}
+const stamp=d=>fmt(d,{day:'numeric',month:'numeric'})+', '+fmt(d,{hour:'2-digit',minute:'2-digit'});
+function snapText(d){
+  const head='טרם אישרו הגעה'+(state.event.boy?' לבר המצווה של '+state.event.boy:'')+'\\nנכון ל־'+stamp(new Date())+' · '+d.pend.length+' הזמנות';
+  const line=(g,i)=>(i+1)+'. '+g.name+(g.phone?' – '+g.phone:'');
+  const parts=[head];
+  for(const [grp,arr] of groupRows(d.pend))parts.push(grp+' ('+arr.length+')\\n'+arr.map(line).join('\\n'));
+  if(d.maybe.length)parts.push('ענו "אולי" ('+d.maybe.length+')\\n'+d.maybe.map(line).join('\\n'));
+  return parts.join('\\n\\n');
+}
+function snapRowHTML(g,i,links){
+  const m=g.status==='pending'?linkMatches(g,links):[];
+  const ph=g.phone?'<a class="snap-phone" dir="ltr" href="tel:'+esc(g.phone.replace(/[^\\d+]/g,''))+'">'+esc(g.phone)+'</a>':'<span class="hint">אין טלפון</span>';
+  const wa=g.phone&&intlPhone(g.phone)?'<a class="btn sm ghost icon-only wa" href="'+esc(waLink(g,'request'))+'" target="_blank" rel="noopener" title="בקשת אישור הגעה בוואטסאפ" aria-label="בקשת אישור הגעה מ'+esc(g.name)+' בוואטסאפ">'+ICON.chat+'</a>':'<span></span>';
+  const hint=m.length?'<span class="snap-hint">אולי כבר ענו בלינק הכללי: '+esc(m.map(l=>l.name+' ('+ST[l.status].label+(l.status==='yes'||l.status==='maybe'?', '+l.count:'')+')').join(' · '))+'</span>':'';
+  return '<li class="snap-row"><span class="snap-n">'+(i+1)+'</span><span class="nm">'+esc(g.name)+'</span>'+ph+wa+hint+'</li>';
+}
+function renderSnapBar(){
+  if(!state.loaded)return;
+  const n=state.guests.filter(g=>g.status==='pending').length;
+  $('#snapCount').textContent=n?n+' הזמנות עוד לא אישרו הגעה':'כל המוזמנים ענו';
+}
+function renderSnapshot(){
+  const d=snapshotData(),s=stats(),now=new Date();
+  const people=d.pend.reduce((a,g)=>a+(g.invited||0),0);
+  $('#snapTitle').textContent=d.pend.length?'טרם אישרו הגעה: '+d.pend.length+' הזמנות':'כל המוזמנים ענו';
+  $('#snapMeta').textContent='נכון ל־'+fmt(now,{weekday:'long',day:'numeric',month:'long'})+', '+fmt(now,{hour:'2-digit',minute:'2-digit'})+(d.pend.length?' · כ־'+people+' אורחים':'')+' · ענו '+(s.total-s.pending)+' מתוך '+s.total+' הזמנות';
+  let h='';
+  for(const [grp,arr] of groupRows(d.pend))h+='<div class="snap-group"><h3>'+esc(grp)+'<span class="c">'+arr.length+'</span></h3><ol class="snap-list">'+arr.map((g,i)=>snapRowHTML(g,i,d.links)).join('')+'</ol></div>';
+  if(d.maybe.length)h+='<div class="snap-group"><h3>ענו "אולי"<span class="c">'+d.maybe.length+'</span></h3><ol class="snap-list">'+d.maybe.map((g,i)=>snapRowHTML(g,i,d.links)).join('')+'</ol></div>';
+  if(!h)h='<p class="empty">כל המוזמנים ענו. אין למי להזכיר.</p>';
+  $('#snapBody').innerHTML=h;
+  const any=d.pend.length+d.maybe.length>0;
+  $('#snapCopy').disabled=!any;$('#snapRound').disabled=!d.pend.length;
+  const share=$('#snapShare');share.hidden=!any;share.href='https://wa.me/?text='+encodeURIComponent(snapText(d));
+}
+
+/* ---------- sheets ---------- */
+let sheetReturn=null;
+function openSheet(id){
+  sheetReturn=document.activeElement;
+  const back=$('#'+id);back.hidden=false;document.body.classList.add('locked');
+  const f=back.querySelector('[data-autofocus]')||back.querySelector('.sheet');
+  setTimeout(()=>{try{f.focus({preventScroll:true});}catch(e){f.focus();}},30);
+}
+function closeSheet(id){
+  $('#'+id).hidden=true;
+  if(!document.querySelector('.sheet-back:not([hidden])'))document.body.classList.remove('locked');
+  if(sheetReturn&&document.contains(sheetReturn))sheetReturn.focus();
+}
+for(const back of document.querySelectorAll('.sheet-back')){
+  back.addEventListener('click',e=>{if(e.target===back||e.target.closest('[data-close]'))closeSheet(back.id);});
+}
+document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;const open=document.querySelector('.sheet-back:not([hidden])');if(open)closeSheet(open.id);});
+
+/* ---------- reminder round ---------- */
+function buildQueue(){
+  const R=state.round;
+  R.queue=state.guests.filter(g=>g.status===R.aud&&g.phone).sort(byName).map(g=>g.id);
+  R.idx=0;R.sent=0;R.skipped=0;
+}
+function renderRound(){
+  const R=state.round;if(!state.loaded)return;if(!R.queue)buildQueue();
+  const s=stats();
+  const AUD=[['pending','טרם ענו'],['maybe','ענו אולי'],['yes','אישרו הגעה']];
+  $('#audSeg').innerHTML=AUD.map(([k,l])=>'<button data-aud="'+k+'" aria-pressed="'+(R.aud===k)+'">'+l+' <span class="c">'+s[k]+'</span></button>').join('');
+  const key=R.aud==='yes'?'reminder':'request';
+  $('#audHint').textContent=key==='reminder'?'נוסח: תזכורת לאירוע, עם קישור לניווט. מתאים לשלוח יום או יומיים לפני.':'נוסח: בקשת אישור הגעה עם הלינק האישי של כל מוזמן.';
+  const card=$('#roundCard'),q=R.queue;
+  if(!q.length){card.innerHTML='<div class="rc-empty"><p>אין כרגע מוזמנים עם מספר טלפון בקבוצה הזו.</p></div>';return;}
+  if(R.idx>=q.length){card.innerHTML='<div class="rc-done"><h3>הסבב הסתיים</h3><p>סימנת '+R.sent+' הודעות כנשלחו'+(R.skipped?', ודילגת על '+R.skipped:'')+'.</p><button class="btn primary" data-r="restart">סבב חדש</button></div>';return;}
+  const g=byId(q[R.idx]);if(!g){R.idx++;renderRound();return;}
+  const pct=Math.round(R.idx/q.length*100);
+  card.innerHTML=
+    '<div class="rc-top"><span>הודעה '+(R.idx+1)+' מתוך '+q.length+'</span><span>נשלחו '+R.sent+(R.skipped?' · דילגת על '+R.skipped:'')+'</span></div>'+
+    '<div class="progress"><i style="width:'+pct+'%"></i></div>'+
+    '<div class="rc-guest"><div class="nm">'+esc(g.name)+'</div><div class="meta"><span dir="ltr">'+esc(g.phone)+'</span>'+(g.group?' · '+esc(g.group):'')+(g.reminders?' · כבר קיבלו '+g.reminders+' תזכורות':'')+'</div></div>'+
+    '<div class="bubble">'+linkify(esc(fill(state.tpl[key],g)))+'</div>'+
+    '<div class="rc-actions"><a class="btn primary" data-r="open" href="'+esc(waLink(g,key))+'" target="_blank" rel="noopener">'+ICON.chat+'פתיחה בוואטסאפ</a>'+
+    '<button class="btn sent" data-r="sent">נשלח, לבא בתור</button><button class="btn ghost" data-r="skip">דילוג</button></div>'+
+    (intlPhone(g.phone)?'':'<p class="hint">המספר הזה לא נראה תקין, אז וואטסאפ יבקש לבחור איש קשר.</p>');
+}
+
+/* ---------- settings ---------- */
+function fillSettings(){for(const id of Object.keys(EV_FIELDS)){const el=$('#'+id);if(document.activeElement!==el)el.value=state.event[EV_FIELDS[id]]||'';}}
+function renderPreview(){
+  const k=state.tplKey,sorted=[...state.guests].sort(byName);
+  renderShare();
+  if(k==='general'){$('#pvLabel').textContent='כך זה ייראה';$('#tplPreview').innerHTML=linkify(esc(fill(state.tpl.general,null)));return;}
+  const sample=sorted.find(g=>k==='reminder'?g.status==='yes':g.status!=='no')||sorted[0]||{name:'משפחת כהן',code:'abc1234',status:'pending'};
+  $('#pvLabel').textContent='כך זה ייראה אצל '+sample.name;
+  $('#tplPreview').innerHTML=linkify(esc(fill(state.tpl[k],sample)));
+}
+function renderShare(){
+  $('#genLink').textContent=generalLink();
+  $('#waGen').href='https://wa.me/?text='+encodeURIComponent(fill(state.tpl.general,null));
+}
+function loadTpl(){
+  const k=state.tplKey;
+  $('#tplText').value=state.tpl[k]||'';
+  for(const b of document.querySelectorAll('#tplSeg button'))b.setAttribute('aria-pressed',String(b.dataset.tpl===k));
+  $('#tplHint').textContent=k==='general'?'ההודעה שנשלחת עם הלינק הכללי, לאנשים או לקבוצות. בלי שם אישי.':k==='request'?'נשלחת למי שטרם ענה או ענה אולי, עם הלינק האישי שלו.':'נשלחת למי שאישר הגעה, יום או יומיים לפני האירוע.';
+  renderPreview();
+}
+let saveTimer;
+function scheduleSave(){
+  const ss=$('#saveState');ss.className='save-state';ss.textContent='שומר…';
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>enqueue(async()=>{
+    try{await api('PUT','/api/settings',{event:state.event,tpl:state.tpl});ss.textContent='נשמר';}
+    catch(e){ss.className='save-state err';ss.textContent='השמירה נכשלה. בדוק את החיבור, השינוי יישמר בעריכה הבאה.';}
+  }),700);
+}
+
+/* ---------- shell ---------- */
+function setTab(t){
+  state.tab=t;
+  for(const b of document.querySelectorAll('.tab'))b.setAttribute('aria-selected',String(b.dataset.tab===t));
+  for(const id of ['board','round','settings'])$('#p-'+id).hidden=id!==t;
+  window.scrollTo(0,0);
+}
+function renderAll(){renderHeader();renderBoard();renderRound();renderPreview();}
+let toastTimer;
+function toast(msg,action){
+  const t=$('#toast');t.innerHTML='';
+  const s=document.createElement('span');s.textContent=msg;t.append(s);
+  if(action&&action.href){const a=document.createElement('a');a.href=action.href;a.target='_blank';a.rel='noopener';a.textContent=action.label;a.addEventListener('click',()=>{t.hidden=true;});t.append(a);}
+  else if(action){const b=document.createElement('button');b.textContent=action.label;b.addEventListener('click',()=>{t.hidden=true;action.fn();});t.append(b);}
+  t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true;},action?(action.href?15000:6500):2800);
+}
+function quickTest(){
+  const n=state.guests.filter(g=>g.group==='בדיקה').length+1;
+  enqueue(()=>api('POST','/api/guests',{guests:[{name:'מוזמן לבדיקה '+n,phone:'',group:'בדיקה',invited:2}]}).then(r=>{
+    applyGuests(r.state.guests);state.round.queue=null;state.filter='all';state.group='all';state.q='';$('#search').value='';
+    const g=state.guests.filter(x=>x.group==='בדיקה').sort((a,b)=>b.id-a.id)[0];
+    if(g)state.expanded=g.id;
+    $('#importPanel').hidden=true;$('#importToggle').setAttribute('aria-expanded','false');
+    setTab('board');renderAll();
+    if(g)toast('נוצר "'+g.name+'". ענה בדף שלו, והתשובה תופיע כאן.',{label:'פתיחת הדף שלו',href:personalLink(g)});
+  },saveFailed));
+}
+function copy(text,done){
+  const ok=()=>toast(done||'הלינק הועתק');
+  const fallback=()=>{
+    // older browsers, or the clipboard API blocked: copy through a temporary text box
+    const ta=document.createElement('textarea');ta.value=text;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';ta.style.top='0';
+    document.body.append(ta);ta.select();ta.setSelectionRange(0,text.length);
+    let done2=false;try{done2=document.execCommand('copy');}catch(e){}
+    ta.remove();
+    if(done2)ok();else toast(text.length>200?'ההעתקה נחסמה בדפדפן. נסה שוב, או השתמש בכפתור הוואטסאפ.':'ההעתקה נחסמה. אפשר לסמן ולהעתיק ידנית: '+text);
+  };
+  try{navigator.clipboard.writeText(text).then(ok,fallback);}catch(e){fallback();}
+}
+/* ---------- arrival map ---------- */
+function renderMap(){
+  const img=$('#mapPreview');
+  if(state.map){img.src='/map?v='+encodeURIComponent(state.map.v);img.hidden=false;$('#mapRemove').hidden=false;$('#mapPick').textContent='החלפת התמונה';}
+  else{img.hidden=true;img.removeAttribute('src');$('#mapRemove').hidden=true;$('#mapPick').textContent='העלאת תמונה';}
+}
+function loadImage(file){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=r.result;};
+    r.onerror=reject;r.readAsDataURL(file);
+  });
+}
+function encodeJpeg(im,max,q){
+  const s=Math.min(1,max/Math.max(im.naturalWidth,im.naturalHeight));
+  const c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.naturalWidth*s));c.height=Math.max(1,Math.round(im.naturalHeight*s));
+  const x=c.getContext('2d');x.fillStyle='#ffffff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);
+  return c.toDataURL('image/jpeg',q).split(',')[1];
+}
+$('#mapFile').addEventListener('change',async e=>{
+  const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;
+  const ss=$('#saveState');ss.className='save-state';ss.textContent='מעלה את המפה…';
+  try{
+    const im=await loadImage(f);
+    let full=encodeJpeg(im,1600,0.85);if(full.length>1800000)full=encodeJpeg(im,1200,0.72);
+    const thumb=encodeJpeg(im,800,0.72);
+    const r=await enqueue(()=>api('PUT','/api/map',{full:{type:'image/jpeg',data:full},thumb:{type:'image/jpeg',data:thumb}}));
+    state.map=r.map;renderMap();ss.textContent='המפה נשמרה';toast('המפה נשמרה. היא מופיעה עכשיו בדף של האורחים.');
+  }catch(err){ss.className='save-state err';ss.textContent='לא הצלחתי להעלות את התמונה. נסה צילום מסך או תמונה אחרת.';}
+});
+$('#mapRemove').addEventListener('click',()=>{
+  if(!window.confirm('להסיר את מפת ההגעה מהדף של האורחים?'))return;
+  enqueue(()=>api('DELETE','/api/map').then(()=>{state.map=null;renderMap();toast('המפה הוסרה');},saveFailed));
+});
+
+$('#copyGenLink').addEventListener('click',()=>copy(generalLink()));
+$('#copyGenMsg').addEventListener('click',()=>copy(fill(state.tpl.general,null),'ההודעה הועתקה. אפשר להדביק בכל צ\\'אט או קבוצה.'));
+function openImport(){const p=$('#importPanel');p.hidden=false;$('#importToggle').setAttribute('aria-expanded','true');}
+
+$('.tabs').addEventListener('click',e=>{const b=e.target.closest('.tab');if(b)setTab(b.dataset.tab);});
+function onFilterClick(e){const b=e.target.closest('[data-filter]');if(!b)return;const f=b.dataset.filter;state.filter=(b.classList.contains('lg')&&state.filter===f)?'all':f;state.expanded=null;renderBoard();}
+$('#stats').addEventListener('click',onFilterClick);
+$('#chips').addEventListener('click',onFilterClick);
+$('#search').addEventListener('input',e=>{state.q=e.target.value;renderList();});
+$('#groupSel').addEventListener('change',e=>{state.group=e.target.value;renderList();});
+
+$('#list').addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');if(!b)return;
+  if(b.dataset.act==='retry'){state.loadError=false;state.loaded=false;renderList();loadAll();return;}
+  if(b.dataset.act==='open-import'){openImport();$('#importText').focus();return;}
+  if(b.dataset.act==='quick-test'){quickTest();return;}
+  const li=b.closest('.row');const g=li&&byId(Number(li.dataset.id));if(!g)return;
+  switch(b.dataset.act){
+    case 'toggle':state.expanded=state.expanded===g.id?null:g.id;renderList();break;
+    case 'set-status':
+      if(g.status===b.dataset.s)return;
+      enqueue(()=>api('PATCH','/api/guests/'+g.id,{status:b.dataset.s}).then(r=>{Object.assign(g,normalize(r.guest));renderAll();toast(g.name+': '+ST[g.status].label);},saveFailed));
+      break;
+    case 'inc':case 'dec':{
+      const dlt=b.dataset.act==='inc'?1:-1;
+      const body=g.status==='pending'?{invited:Math.max(1,g.invited+dlt)}:{count:Math.max(1,g.count+dlt)};
+      enqueue(()=>api('PATCH','/api/guests/'+g.id,body).then(r=>{Object.assign(g,normalize(r.guest));renderAll();},saveFailed));
+      break;}
+    case 'copy':copy(personalLink(g));break;
+    case 'delete':
+      if(!window.confirm('למחוק את '+g.name+' מהרשימה? הלינק האישי שלו יפסיק לעבוד.'))return;
+      enqueue(()=>api('DELETE','/api/guests/'+g.id).then(()=>{state.guests=state.guests.filter(x=>x.id!==g.id);state.expanded=null;buildGroupSelect();renderAll();toast(g.name+' נמחק מהרשימה');},saveFailed));
+      break;
+  }
+});
+$('#list').addEventListener('change',e=>{
+  const field=e.target.dataset.field;if(!field)return;
+  const g=byId(Number(e.target.closest('.row').dataset.id));if(!g)return;
+  const value=e.target.value;
+  enqueue(()=>api('PATCH','/api/guests/'+g.id,{[field]:value}).then(r=>{Object.assign(g,normalize(r.guest));updateRow(g);if(field==='group')buildGroupSelect();toast('נשמר');},saveFailed));
+});
+
+$('#importToggle').addEventListener('click',e=>{const p=$('#importPanel');p.hidden=!p.hidden;e.currentTarget.setAttribute('aria-expanded',String(!p.hidden));if(!p.hidden)$('#importText').focus();});
+$('#quickTestBtn').addEventListener('click',quickTest);
+$('#importGo').addEventListener('click',()=>{
+  const rows=[];
+  for(const line of $('#importText').value.split(/\\r?\\n/)){
+    const p=line.split(/\\t|,/).map(x=>x.trim());
+    if(!p[0]||p[0]==='שם')continue;
+    rows.push({name:p[0],phone:p[1]||'',group:p[2]||'',invited:parseInt(p[3],10)||2});
+  }
+  if(!rows.length){toast('לא נמצאו שורות. כל שורה צריכה להתחיל בשם.');return;}
+  const replace=$('#importReplace').checked;
+  if(replace&&state.guests.length&&!window.confirm('למחוק את כל '+state.guests.length+' המוזמנים הקיימים ואת התשובות שלהם, ולהכניס את הרשימה החדשה? הלינקים הישנים יפסיקו לעבוד.'))return;
+  const btn=$('#importGo');btn.disabled=true;
+  enqueue(()=>api('POST','/api/guests',{guests:rows,replace}).then(r=>{
+    applyGuests(r.state.guests);state.round.queue=null;state.expanded=null;
+    $('#importText').value='';$('#importReplace').checked=false;$('#importPanel').hidden=true;$('#importToggle').setAttribute('aria-expanded','false');
+    renderAll();toast('נוספו '+r.added+' מוזמנים'+(r.skipped?', '+r.skipped+' כפולים או ריקים דולגו':''));
+  },saveFailed).finally(()=>{btn.disabled=false;}));
+});
+
+$('#snapBtn').addEventListener('click',async()=>{
+  renderSnapshot();openSheet('snapSheet');
+  try{const s=await api('GET','/api/state');applyGuests(s.guests);renderBoard();renderRound();}catch(e){}
+});
+$('#snapCopy').addEventListener('click',()=>copy(snapText(snapshotData()),'הרשימה הועתקה. אפשר להדביק בוואטסאפ או בכל מקום.'));
+$('#snapRound').addEventListener('click',()=>{closeSheet('snapSheet');state.round.aud='pending';buildQueue();setTab('round');renderRound();});
+
+/* ---------- reset after tests (needs the reset code) ---------- */
+function renderResetPlan(p){
+  const names=a=>esc(a.slice(0,15).map(x=>x.name).join(', '))+(a.length>15?' ועוד '+(a.length-15):'');
+  const go=$('#resetGo'),pin=$('#resetPin');
+  let h='';
+  if(!p.pinSet){h='<p>לא הוגדר קוד איפוס למערכת.</p>';go.disabled=true;pin.disabled=true;}
+  else if(!p.remove.length&&!p.revert.length){h='<p style="margin-top:12px"><b>אין מה לאפס.</b> לא נכנסו תשובות או בדיקות מאז שרשימת המוזמנים נטענה.</p>';go.disabled=true;pin.disabled=true;}
+  else{
+    h='<p style="margin-top:12px">האיפוס מחזיר את המערכת למצב שהיה מיד אחרי טעינת רשימת המוזמנים.</p><ul class="reset-list">'+
+      (p.remove.length?'<li><b>יימחקו '+p.remove.length+' רשומות</b> שנוספו מאז, כמו בדיקות ותשובות דרך הלינק הכללי: '+names(p.remove)+'</li>':'')+
+      (p.revert.length?'<li><b>'+p.revert.length+' מוזמנים יחזרו למצב ההתחלתי</b>, והתשובות והתזכורות שלהם יימחקו: '+names(p.revert)+'</li>':'')+
+      '<li>נשארים כמו שהם: '+p.keepTotal+' המוזמנים מהרשימה'+(p.keepYes?', כולל '+p.keepYes+' שסומנו מראש כמגיעים':'')+', פרטי האירוע, הנוסחים והמפה.</li></ul>'+
+      '<p class="warn">כדאי לאפס רק לפני ששולחים לאורחים. אחרי זה, איפוס ימחק גם תשובות אמיתיות.</p>';
+    go.disabled=false;pin.disabled=false;
+  }
+  $('#resetBody').innerHTML=h;
+}
+$('#resetBtn').addEventListener('click',async()=>{
+  $('#resetPin').value='';$('#resetErr').textContent='';$('#resetGo').disabled=true;
+  $('#resetBody').innerHTML='<p class="muted" style="margin-top:12px">בודק מה ישתנה…</p>';
+  openSheet('resetSheet');
+  try{renderResetPlan(await api('GET','/api/reset/preview'));}
+  catch(e){if(!e||e.message!=='unauthorized')$('#resetBody').innerHTML='<p class="save-state err" style="margin-top:12px">לא הצלחתי לבדוק את המצב. בדוק את החיבור ונסה שוב.</p>';}
+});
+$('#resetForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const pin=$('#resetPin').value.trim(),err=$('#resetErr'),btn=$('#resetGo');
+  if(!pin){err.textContent='צריך להקליד את קוד האיפוס.';$('#resetPin').focus();return;}
+  btn.disabled=true;err.textContent='';
+  try{
+    const res=await fetch('/api/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin}),credentials:'same-origin'});
+    if(res.status===401){location.reload();return;}
+    if(res.status===422){err.textContent='הקוד שגוי. נסה שוב.';btn.disabled=false;$('#resetPin').select();return;}
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const r=await res.json();
+    applyGuests(r.state.guests);state.round.queue=null;state.expanded=null;
+    closeSheet('resetSheet');renderAll();
+    toast('המערכת אופסה. '+(r.removed?r.removed+' רשומות נמחקו':'')+(r.removed&&r.reverted?', ':'')+(r.reverted?r.reverted+' מוזמנים חזרו למצב ההתחלתי':'')+'.');
+  }catch(ex){err.textContent='האיפוס לא הצליח. בדוק את החיבור ונסה שוב.';btn.disabled=false;}
+});
+
+$('#audSeg').addEventListener('click',e=>{const b=e.target.closest('[data-aud]');if(!b)return;state.round.aud=b.dataset.aud;buildQueue();renderRound();});
+$('#roundCard').addEventListener('click',e=>{
+  const b=e.target.closest('[data-r]');if(!b)return;
+  const R=state.round;
+  switch(b.dataset.r){
+    case 'open':{const s=$('#roundCard .sent');if(s)s.classList.add('ready');break;}
+    case 'sent':{
+      const g=byId(R.queue[R.idx]);R.sent++;R.idx++;renderRound();
+      if(g)enqueue(()=>api('PATCH','/api/guests/'+g.id,{reminderSent:true}).then(r=>{Object.assign(g,normalize(r.guest));renderBoard();},saveFailed));
+      break;}
+    case 'skip':R.skipped++;R.idx++;renderRound();break;
+    case 'restart':buildQueue();renderRound();break;
+  }
+});
+
+for(const id of Object.keys(EV_FIELDS)){
+  const el=$('#'+id),k=EV_FIELDS[id];
+  el.addEventListener('input',()=>{state.event[k]=el.value;renderHeader();renderPreview();renderList();renderRound();scheduleSave();});
+}
+$('#tplSeg').addEventListener('click',e=>{const b=e.target.closest('[data-tpl]');if(!b)return;state.tplKey=b.dataset.tpl;loadTpl();});
+$('#tplText').addEventListener('input',e=>{state.tpl[state.tplKey]=e.target.value;renderPreview();renderList();renderRound();scheduleSave();});
+$('#vars').innerHTML=VARS.map(v=>'<button class="var" data-var="'+esc(v)+'">{'+esc(v)+'}</button>').join('');
+$('#vars').addEventListener('click',e=>{
+  const b=e.target.closest('[data-var]');if(!b)return;
+  const ta=$('#tplText');ta.focus();
+  ta.setRangeText('{'+b.dataset.var+'}',ta.selectionStart,ta.selectionEnd,'end');
+  ta.dispatchEvent(new Event('input'));
+});
+$('#tplReset').addEventListener('click',()=>{state.tpl[state.tplKey]=state.defaults[state.tplKey]||'';loadTpl();renderList();renderRound();scheduleSave();toast('הנוסח חזר למקור');});
+
+renderAll();
+loadAll();
+})();
+</script>
+</body>
+</html>
+`;
 
 const DAY = 86400000;
 const COOKIE = 'rsvp_admin';
@@ -98,7 +1088,9 @@ const PREV_GENERAL = `תזכורת: בר המצווה של {חתן}
 מחכים לראותכם,
 {שולח}`;
 const GENERAL_GROUP = 'לינק כללי';
+const TEST_GROUP = 'בדיקה'; // rows made by the dashboard's quick test; never part of the starting point
 const MAP_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const UPSERT = 'INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value';
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
@@ -152,7 +1144,7 @@ export default {
       if (path === '/admin/setup' && method === 'POST') return setup(request, env, url);
       if (path === '/admin/logout' && method === 'POST') return logout(url);
       if (path === '/admin' || path === '/admin/') {
-        if (await isAdmin(request, env)) return html(ADMIN_HTML);
+        if (await isAdmin(request, env)) return html(await adminPage(env, url));
         const auth = await getAuth(env);
         return auth.mode === 'setup' ? setupPage('') : loginPage(false, 200);
       }
@@ -238,6 +1230,61 @@ async function getSettings(env) {
   if (savedGeneral === OLD_GENERAL || savedGeneral === PREV_GENERAL) tpl.general = DEFAULT_TPL.general;
   const meta = parseJSON(rows.mapmeta);
   return { event: { ...DEFAULT_EVENT, ...parseJSON(rows.event) }, tpl, map: meta && meta.v ? { v: meta.v } : null };
+}
+
+/* The dashboard page: a copy saved in D1 wins, so the page can be updated without redeploying the Worker. */
+async function adminPage(env, url) {
+  if (!url.searchParams.has('builtin')) {
+    const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'adminhtml'").first();
+    if (row && typeof row.value === 'string' && row.value.includes('</html>')) return row.value;
+  }
+  return ADMIN_HTML;
+}
+
+/*
+ * Reset after testing. The "baseline" is the state right after the guest list was loaded:
+ * one entry per invitation with its starting answer (most are pending, some were confirmed in the host's sheet).
+ * A reset deletes every row that is not in the baseline (test rows, answers through the general link)
+ * and puts every baseline row back to its starting answer, with no reminders sent.
+ */
+async function getBaseline(env) {
+  const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'baseline'").first();
+  const b = row && parseJSON(row.value);
+  return b && b.rows && typeof b.rows === 'object' ? b : null;
+}
+async function saveBaseline(env, b) {
+  await env.DB.prepare(UPSERT).bind('baseline', JSON.stringify(b)).run();
+}
+function baselineEntry(r) {
+  return { s: r.status, c: r.count, src: r.source == null ? null : r.source, at: r.answered_at == null ? null : r.answered_at, note: r.note || '', inv: r.invited };
+}
+async function checkResetPin(env, pin) {
+  const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'resetpin'").first();
+  const cfg = row && parseJSON(row.value);
+  if (cfg && cfg.salt && cfg.hash) {
+    const digest = await crypto.subtle.digest('SHA-256', enc.encode(cfg.salt + ':' + pin));
+    const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    return safeEqual(hex, String(cfg.hash));
+  }
+  return env.RESET_PIN ? safeEqual(pin, String(env.RESET_PIN)) : null; // null: no code configured
+}
+async function resetPlan(env) {
+  const base = await getBaseline(env);
+  const { results } = await env.DB.prepare('SELECT * FROM guests ORDER BY name').all();
+  const remove = [], revert = [];
+  let keepTotal = 0, keepYes = 0;
+  for (const r of results || []) {
+    let k;
+    if (base) k = base.rows[String(r.id)];
+    else if (r.grp !== GENERAL_GROUP && r.grp !== TEST_GROUP) k = { s: 'pending', c: 0, src: null, at: null, note: '', inv: r.invited };
+    if (!k) { remove.push(r); continue; }
+    keepTotal++;
+    if (k.s === 'yes') keepYes++;
+    const changed = r.status !== k.s || Number(r.count) !== Number(k.c) || (r.note || '') !== (k.note || '') ||
+      Number(r.invited) !== Number(k.inv) || (r.source == null ? null : r.source) !== (k.src == null ? null : k.src) || (r.reminders || 0) > 0;
+    if (changed) revert.push({ r, k });
+  }
+  return { base, remove, revert, keepTotal, keepYes };
 }
 
 /* The arrival map: uploaded from the dashboard, kept in D1 as base64 (full size and a small copy for link previews). */
@@ -761,7 +1808,7 @@ async function api(request, env, url) {
     if (body.tpl && typeof body.tpl === 'object') {
       for (const k of Object.keys(DEFAULT_TPL)) if (k in body.tpl) s.tpl[k] = str(body.tpl[k], 3000, true);
     }
-    const upsert = 'INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value';
+    const upsert = UPSERT;
     await env.DB.batch([
       env.DB.prepare(upsert).bind('event', JSON.stringify(s.event)),
       env.DB.prepare(upsert).bind('tpl', JSON.stringify(s.tpl)),
@@ -779,6 +1826,7 @@ async function api(request, env, url) {
     const seen = new Set(replace ? [] : (existing || []).map((r) => dupKey(r.name, r.phone)));
     const now = new Date().toISOString();
     const stmts = replace ? [env.DB.prepare('DELETE FROM guests')] : [];
+    const newCodes = [];
     let added = 0, skipped = 0;
     for (const raw of body.guests) {
       const name = str(raw && raw.name, 120).trim();
@@ -787,13 +1835,36 @@ async function api(request, env, url) {
       const key = dupKey(name, phone);
       if (seen.has(key)) { skipped++; continue; }
       seen.add(key);
+      const code = newCode(taken);
+      const group = str(raw.group, 60).trim();
+      if (group !== TEST_GROUP) newCodes.push(code);
       stmts.push(
         env.DB.prepare('INSERT INTO guests (code, name, phone, grp, invited, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)')
-          .bind(newCode(taken), name, phone, str(raw.group, 60).trim(), clampInt(raw.invited, 1, 50, 2), now),
+          .bind(code, name, phone, group, clampInt(raw.invited, 1, 50, 2), now),
       );
       added++;
     }
     if (stmts.length) await env.DB.batch(stmts);
+    // Imported invitations join the reset starting point (a full replace starts a new one).
+    if (newCodes.length || replace) {
+      let base = replace ? null : await getBaseline(env);
+      if (!base) {
+        base = { saved: now, rows: {} };
+        if (!replace) {
+          // First starting point on a list that already existed: keep its invitations, as unanswered.
+          const { results: old } = await env.DB.prepare('SELECT * FROM guests').all();
+          for (const r of old || []) {
+            if (r.grp !== GENERAL_GROUP && r.grp !== TEST_GROUP && !newCodes.includes(r.code)) base.rows[String(r.id)] = { s: 'pending', c: 0, src: null, at: null, note: '', inv: r.invited };
+          }
+        }
+      }
+      if (newCodes.length) {
+        const { results: fresh } = await env.DB.prepare('SELECT * FROM guests WHERE code IN (SELECT value FROM json_each(?1))').bind(JSON.stringify(newCodes)).all();
+        for (const r of fresh || []) base.rows[String(r.id)] = baselineEntry(r);
+      }
+      base.saved = now;
+      await saveBaseline(env, base);
+    }
     return json({ ok: true, added, skipped, state: await stateJSON(env, url) });
   }
 
@@ -823,11 +1894,49 @@ async function api(request, env, url) {
     await env.DB.prepare(
       'UPDATE guests SET name = ?1, phone = ?2, grp = ?3, invited = ?4, status = ?5, count = ?6, note = ?7, source = ?8, answered_at = ?9, reminders = ?10, last_reminder = ?11 WHERE id = ?12',
     ).bind(g.name, g.phone, g.grp, g.invited, g.status, g.count, g.note, g.source, g.answered_at, g.reminders, g.last_reminder, id).run();
+    if ('invited' in b && g.invited !== row.invited) {
+      // The host changed how many are invited: a reset keeps that number.
+      const base = await getBaseline(env);
+      if (base && base.rows[String(id)]) { base.rows[String(id)].inv = g.invited; await saveBaseline(env, base); }
+    }
     return json({ ok: true, guest: toGuest(g) });
   }
   if (m && method === 'DELETE') {
-    await env.DB.prepare('DELETE FROM guests WHERE id = ?1').bind(Number(m[1])).run();
+    const id = Number(m[1]);
+    await env.DB.prepare('DELETE FROM guests WHERE id = ?1').bind(id).run();
+    const base = await getBaseline(env);
+    if (base && base.rows[String(id)]) { delete base.rows[String(id)]; await saveBaseline(env, base); }
     return json({ ok: true });
+  }
+
+  if (p === '/api/reset/preview' && method === 'GET') {
+    const plan = await resetPlan(env);
+    const pin = await checkResetPin(env, '');
+    const brief = (r) => ({ name: r.name, group: r.grp, status: r.status, count: r.count });
+    return json({
+      pinSet: pin !== null, hasBaseline: !!plan.base, saved: plan.base ? plan.base.saved || null : null,
+      remove: plan.remove.map(brief), revert: plan.revert.map((x) => brief(x.r)), keepTotal: plan.keepTotal, keepYes: plan.keepYes,
+    });
+  }
+  if (p === '/api/reset' && method === 'POST') {
+    const b = (await readJSON(request)) || {};
+    const ok = await checkResetPin(env, str(b.pin, 40).trim());
+    if (ok === null) return json({ error: 'no reset code configured' }, 409);
+    if (!ok) {
+      await new Promise((r) => setTimeout(r, 700)); // slow down guessing
+      return json({ error: 'wrong code' }, 422);
+    }
+    const plan = await resetPlan(env);
+    const stmts = [];
+    for (const r of plan.remove) stmts.push(env.DB.prepare('DELETE FROM guests WHERE id = ?1').bind(r.id));
+    for (const { r, k } of plan.revert) {
+      stmts.push(
+        env.DB.prepare('UPDATE guests SET status = ?1, count = ?2, source = ?3, answered_at = ?4, note = ?5, invited = ?6, reminders = 0, last_reminder = NULL WHERE id = ?7')
+          .bind(STATUSES.includes(k.s) ? k.s : 'pending', clampInt(k.c, 0, 50, 0), k.src == null ? null : String(k.src), k.at == null ? null : String(k.at), String(k.note || ''), clampInt(k.inv, 1, 50, r.invited || 2), r.id),
+      );
+    }
+    if (stmts.length) await env.DB.batch(stmts);
+    return json({ ok: true, removed: plan.remove.length, reverted: plan.revert.length, state: await stateJSON(env, url) });
   }
 
   if (p === '/api/map' && method === 'PUT') {
@@ -860,7 +1969,7 @@ async function api(request, env, url) {
     for (const r of results || []) {
       lines.push([
         r.name, r.phone, r.grp, STATUS_HE[r.status] || r.status, r.status === 'yes' || r.status === 'maybe' ? r.count : 0, r.invited, r.note,
-        r.source === 'link' ? 'דרך הלינק' : r.source === 'manual' ? 'ידני' : '', r.answered_at ? new Date(r.answered_at).toLocaleString('sv-SE', { timeZone: 'Asia/Jerusalem' }).slice(0, 16) : '',
+        r.source === 'link' ? 'דרך הלינק' : r.source === 'manual' ? 'ידני' : r.source === 'excel' ? 'מהאקסל' : '', r.answered_at ? new Date(r.answered_at).toLocaleString('sv-SE', { timeZone: 'Asia/Jerusalem' }).slice(0, 16) : '',
         r.reminders, url.origin + '/r/' + r.code,
       ].map(cell).join(','));
     }
