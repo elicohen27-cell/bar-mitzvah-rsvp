@@ -173,6 +173,9 @@ main.wrap{padding-block:20px 12px}
 .c-phone{font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
 .c-people{font-variant-numeric:tabular-nums}
 .c-act{font-size:13px;color:var(--muted);min-width:0}
+.c-act .lock{width:13px;height:13px;vertical-align:-2px;margin-inline-end:5px;color:var(--tekhelet)}
+.lock-note{flex-basis:100%;display:flex;gap:8px;align-items:center;font-size:13.5px;color:var(--tekhelet);background:var(--tekhelet-soft);border-radius:var(--r-sm);padding:8px 12px}
+.lock-note svg{width:15px;height:15px;flex:none}
 .c-btns{display:flex;gap:4px;justify-content:flex-end}
 .row.open [data-act="toggle"] svg{transform:rotate(180deg)}
 .empty{padding:32px 16px;color:var(--muted);text-align:center;display:grid;gap:12px;justify-items:center}
@@ -467,7 +470,8 @@ const ICON={
   chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.5L3 21l2-5.5A8.4 8.4 0 1 1 21 11.5z"/></svg>',
   chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
   copy:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>',
-  ext:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>'
+  ext:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>',
+  lock:'<svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
 };
 const ST={yes:{label:'מגיעים'},maybe:{label:'אולי'},no:{label:'לא מגיעים'},pending:{label:'טרם ענו'}};
 const VARS=['שם','חתן','יום','תאריך','תאריך עברי','שעה','מקום','כתובת','לינק','ניווט','שולח'];
@@ -605,6 +609,7 @@ function filtered(){
   return state.guests.filter(g=>(state.filter==='all'||g.status===state.filter)&&(state.group==='all'||g.group===state.group)&&(!q||g.name.includes(q)||(qd&&g.phone.replace(/\\D/g,'').includes(qd)))).sort(byName);
 }
 function activity(g){
+  if(g.locked)return (g.source==='excel'?'אישרו לפי האקסל':'מהאקסל')+' · נעול מאיפוס';
   if(g.status!=='pending'&&g.source==='excel')return 'אישרו לפי האקסל';
   if(g.status!=='pending')return (g.source==='link'?'ענו דרך הלינק':'סומן ידנית')+' · '+ago(g.answeredAt);
   if(g.reminders)return (g.reminders===1?'נשלחה תזכורת':'נשלחו '+g.reminders+' תזכורות')+' · '+ago(g.lastReminder);
@@ -621,7 +626,7 @@ function rMainHTML(g){
     '<div class="c-phone" dir="ltr">'+esc(g.phone||'—')+'</div>'+
     '<div class="c-status">'+pill(g.status)+'</div>'+
     '<div class="c-people">'+people+'</div>'+
-    '<div class="c-act">'+esc(activity(g))+'</div>'+
+    '<div class="c-act">'+(g.locked?ICON.lock:'')+esc(activity(g))+'</div>'+
     '<div class="c-btns">'+wa+'<button class="btn sm ghost icon-only" data-act="toggle" aria-expanded="'+open+'" aria-label="עריכת '+esc(g.name)+'">'+ICON.chev+'</button></div>';
 }
 function editorHTML(g){
@@ -629,6 +634,7 @@ function editorHTML(g){
   const n=editsInvited?g.invited:g.status==='no'?0:g.count;
   const f=(field,label,val,dir)=>'<div class="field"><label for="f-'+field+'-'+g.id+'">'+label+'</label><input id="f-'+field+'-'+g.id+'" class="inp" data-field="'+field+'" value="'+esc(val)+'"'+(dir?' dir="'+dir+'"':'')+'></div>';
   return '<div class="editor">'+
+    (g.locked?'<p class="lock-note">'+ICON.lock.replace(' class="lock"','')+'<span>הגיע מהאקסל ונעול מאיפוס. האיפוס לא נוגע בשורה הזו, וגם שינוי שתעשה כאן יישאר.</span></p>':'')+
     '<div class="ed-block"><span class="ed-label">סטטוס</span><div class="seg" role="group" aria-label="סטטוס">'+
       ['yes','maybe','no','pending'].map(s=>'<button class="'+s+'" data-act="set-status" data-s="'+s+'" aria-pressed="'+(g.status===s)+'">'+ST[s].label+'</button>').join('')+'</div></div>'+
     '<div class="ed-block"><span class="ed-label">'+(editsInvited?'מספר מוזמנים':'מספר מגיעים')+'</span>'+stepper(n,g.status==='no')+'</div>'+
@@ -936,7 +942,8 @@ function renderResetPlan(p){
     h='<p style="margin-top:12px">האיפוס מחזיר את המערכת למצב שהיה מיד אחרי טעינת רשימת המוזמנים.</p><ul class="reset-list">'+
       (p.remove.length?'<li><b>יימחקו '+p.remove.length+' רשומות</b> שנוספו מאז, כמו בדיקות ותשובות דרך הלינק הכללי: '+names(p.remove)+'</li>':'')+
       (p.revert.length?'<li><b>'+p.revert.length+' מוזמנים יחזרו למצב ההתחלתי</b>, והתשובות והתזכורות שלהם יימחקו: '+names(p.revert)+'</li>':'')+
-      '<li>נשארים כמו שהם: '+p.keepTotal+' המוזמנים מהרשימה'+(p.keepYes?', כולל '+p.keepYes+' שסומנו מראש כמגיעים':'')+', פרטי האירוע, הנוסחים והמפה.</li></ul>'+
+      (p.locked&&p.locked.length?'<li><b>'+p.locked.length+' אישורים מהאקסל נעולים</b>, והאיפוס לא נוגע בהם: '+names(p.locked)+'</li>':'')+
+      '<li>אף מוזמן מהרשימה לא נמחק ('+p.keepTotal+'). גם פרטי האירוע, הנוסחים והמפה נשארים.</li></ul>'+
       '<p class="warn">כדאי לאפס רק לפני ששולחים לאורחים. אחרי זה, איפוס ימחק גם תשובות אמיתיות.</p>';
     go.disabled=false;pin.disabled=false;
   }
@@ -1268,10 +1275,15 @@ async function checkResetPin(env, pin) {
   }
   return env.RESET_PIN ? safeEqual(pin, String(env.RESET_PIN)) : null; // null: no code configured
 }
+// Locked rows (confirmations that came from the host's sheet) are never touched by a reset, whatever was edited since.
+function isLocked(base, id) {
+  const k = base && base.rows[String(id)];
+  return !!(k && k.lock);
+}
 async function resetPlan(env) {
   const base = await getBaseline(env);
   const { results } = await env.DB.prepare('SELECT * FROM guests ORDER BY name').all();
-  const remove = [], revert = [];
+  const remove = [], revert = [], locked = [];
   let keepTotal = 0, keepYes = 0;
   for (const r of results || []) {
     let k;
@@ -1279,12 +1291,13 @@ async function resetPlan(env) {
     else if (r.grp !== GENERAL_GROUP && r.grp !== TEST_GROUP) k = { s: 'pending', c: 0, src: null, at: null, note: '', inv: r.invited };
     if (!k) { remove.push(r); continue; }
     keepTotal++;
+    if (k.lock) { locked.push(r); continue; }
     if (k.s === 'yes') keepYes++;
     const changed = r.status !== k.s || Number(r.count) !== Number(k.c) || (r.note || '') !== (k.note || '') ||
       Number(r.invited) !== Number(k.inv) || (r.source == null ? null : r.source) !== (k.src == null ? null : k.src) || (r.reminders || 0) > 0;
     if (changed) revert.push({ r, k });
   }
-  return { base, remove, revert, keepTotal, keepYes };
+  return { base, remove, revert, locked, keepTotal, keepYes };
 }
 
 /* The arrival map: uploaded from the dashboard, kept in D1 as base64 (full size and a small copy for link previews). */
@@ -1777,11 +1790,13 @@ async function guestIcs(env, code) {
 /* ------------------------------------------------------------------ admin API */
 
 async function stateJSON(env, url) {
-  const [settings, rows] = await Promise.all([
+  const [settings, rows, baseline] = await Promise.all([
     getSettings(env),
     env.DB.prepare('SELECT * FROM guests ORDER BY name').all(),
+    getBaseline(env),
   ]);
-  return { ...settings, defaults: DEFAULT_TPL, base: url.origin, guests: (rows.results || []).map(toGuest) };
+  const guests = (rows.results || []).map((r) => ({ ...toGuest(r), locked: isLocked(baseline, r.id) }));
+  return { ...settings, defaults: DEFAULT_TPL, base: url.origin, guests };
 }
 
 function dupKey(name, phone) {
@@ -1915,7 +1930,7 @@ async function api(request, env, url) {
     const brief = (r) => ({ name: r.name, group: r.grp, status: r.status, count: r.count });
     return json({
       pinSet: pin !== null, hasBaseline: !!plan.base, saved: plan.base ? plan.base.saved || null : null,
-      remove: plan.remove.map(brief), revert: plan.revert.map((x) => brief(x.r)), keepTotal: plan.keepTotal, keepYes: plan.keepYes,
+      remove: plan.remove.map(brief), revert: plan.revert.map((x) => brief(x.r)), locked: plan.locked.map(brief), keepTotal: plan.keepTotal, keepYes: plan.keepYes,
     });
   }
   if (p === '/api/reset' && method === 'POST') {
